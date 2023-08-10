@@ -145,19 +145,15 @@ fn main() -> anyhow::Result<()> {
         slint::Image::load_from_path(raw_path.as_path())
             .map_err(|_| anyhow!("Failed to load image"))?,
     );
+    win.set_pic_width(app.cache.borrow().pic_width);
+    win.set_pic_height(app.cache.borrow().pic_height);
     {
         let app_for_win = Rc::clone(&app);
         win.on_commit(move |is_full, area| {
             let committed = if is_full {
                 Committed::Full
             } else {
-                let ref cache = app_for_win.cache.borrow();
-                Committed::Partial(Area2D {
-                    x: area.x / cache.scr_width * cache.pic_width,
-                    y: area.y / cache.scr_height * cache.pic_height,
-                    width: area.width / cache.scr_width * cache.pic_width,
-                    height: area.height / cache.scr_height * cache.pic_height,
-                })
+                Committed::Partial(area)
             };
             app_for_win
                 .commit(committed, raw_path.as_path())

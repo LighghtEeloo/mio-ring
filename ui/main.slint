@@ -7,9 +7,6 @@ struct Area2D {
 }
 
 component Captured inherits Image {
-    width: 100%;
-    height: 100%;
-
     property <State> state;
     // point in maybe form
     property <[Point]> point-a;
@@ -21,31 +18,19 @@ component Captured inherits Image {
     }
     in property <color> mask-color: #c1c6d4;
 
-    // the top-left point in maybe form
-    out property <[Point]> anchor;
-    // the width and height in maybe form
-    out property <[Point]> frame;
-
-    // utils
-    function pointed(p: [Point]) -> Point {
-        p.length == 0 ? { x: 0, y: 0 } : p[0]
-    }
-    function check-pointer(e: PointerEvent, button: PointerEventButton, kind: PointerEventKind) -> bool {
-        e.button == button && e.kind == kind
-    }
+    // the selected area in maybe form
+    out property <[Area2D]> area;
 
     // input: two points on xy plane
     // modifies: anchor & frame
     callback compute-anchor-frame();
     compute-anchor-frame() => {
         if (!(point-a.length == 0 || point-b.length == 0)) {
-            anchor = [{
+            root.area = [{
                 x: min(point-a[0].x, point-b[0].x),
-                y: min(point-a[0].y, point-b[0].y)
-            }];
-            frame = [{
-                x: abs((point-a[0].x - point-b[0].x) / 1px) * 1px,
-                y: abs((point-a[0].y - point-b[0].y) / 1px) * 1px
+                y: min(point-a[0].y, point-b[0].y),
+                width: abs((point-a[0].x - point-b[0].x) / 1px) * 1px,
+                height: abs((point-a[0].y - point-b[0].y) / 1px) * 1px
             }];
         }
     }
@@ -61,6 +46,10 @@ component Captured inherits Image {
     end-drag => {
         state = State.rect-hold;
         point-b = [{ x: area.mouse-x, y: area.mouse-y }];
+    }
+
+    function check-pointer(e: PointerEvent, button: PointerEventButton, kind: PointerEventKind) -> bool {
+        e.button == button && e.kind == kind
     }
 
     area := TouchArea {
@@ -82,15 +71,15 @@ component Captured inherits Image {
 
     out property <[Area2D]> mask-areas: [ {
         x: 0, y: 0,
-        width: pointed(anchor).x, height: root.height
+        width: root.area[0].x, height: root.height
     }, {
-        x: pointed(anchor).x, y: 0,
-        width: pointed(frame).x, height: pointed(anchor).y 
+        x: root.area[0].x, y: 0,
+        width: root.area[0].width, height: root.area[0].y 
     }, {
-        x: pointed(anchor).x, y: pointed(anchor).y + pointed(frame).y,
-        width: pointed(frame).x, height: root.height
+        x: root.area[0].x, y: root.area[0].y + root.area[0].height,
+        width: root.area[0].width, height: root.height
     }, {
-        x: pointed(anchor).x + pointed(frame).x, y: 0,
+        x: root.area[0].x + root.area[0].width, y: 0,
         width: root.width, height: root.height
     } ];
 
@@ -117,33 +106,48 @@ component Captured inherits Image {
     }
 
     callback commit(bool, Area2D);
+    in property <length> pic_width;
+    in property <length> pic_height;
 
     // receive keyboard events
-    FocusScope {
+    focused := FocusScope {
         key-pressed(e) => {
-            // debug(e.text);
-            // if (e.modifiers.control) {
-            //     debug("control was pressed during this event");
-            // }
             if (e.text == Key.Return) {
-                debug("Return key was pressed");
-                commit(false, {
-                    x: pointed(anchor).x, y: pointed(anchor).y,
-                    width: pointed(frame).x, height: pointed(frame).y
-                })
+                if (e.modifiers.shift) {
+                    commit(true, {
+                        x: 0, y: 0,
+                        width: 0, height: 0
+                    })
+                } else {
+                    commit(false, {
+                        x: root.area[0].x * pic_width / root.width,
+                        y: root.area[0].y * pic_height / root.height,
+                        width: root.area[0].width * pic_width / root.width,
+                        height: root.area[0].height * pic_height / root.height
+                    })
+                }
             }
             accept
         }
+    }
+
+    init => {
+        focused.focus();
     }
 }
 
 export component MainWindow inherits Window {
     title: "~ Mio Ring ~";
     // no-frame: true;
+
     in property <image> raw-shot;
+    in property <length> pic_width <=> cap.pic_width;
+    in property <length> pic_height <=> cap.pic_height;
     callback commit(bool, Area2D);
+
     cap := Captured {
         source: raw-shot;
+        height: 100%;
         commit(is-full, area) => { root.commit(is-full, area); }
     }
 }
