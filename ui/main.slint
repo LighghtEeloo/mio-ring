@@ -12,21 +12,19 @@ component Captured inherits Image {
     property <[Point]> point-a;
     // another point in maybe form
     property <[Point]> point-b;
+    // the selected area in maybe form
+    out property <[Area2D]> selected;
 
     function is-valid() -> bool {
         state != State.rect-plain && point-a.length != 0 && point-b.length != 0
     }
-    in property <color> mask-color: #c1c6d4;
-
-    // the selected area in maybe form
-    out property <[Area2D]> area;
 
     // input: two points on xy plane
     // modifies: anchor & frame
     callback compute-anchor-frame();
     compute-anchor-frame() => {
         if (!(point-a.length == 0 || point-b.length == 0)) {
-            root.area = [{
+            selected = [{
                 x: min(point-a[0].x, point-b[0].x),
                 y: min(point-a[0].y, point-b[0].y),
                 width: abs((point-a[0].x - point-b[0].x) / 1px) * 1px,
@@ -69,17 +67,19 @@ component Captured inherits Image {
         }
     }
 
+    in property <color> mask-color: #c1c6d4;
+
     out property <[Area2D]> mask-areas: [ {
         x: 0, y: 0,
-        width: root.area[0].x, height: root.height
+        width: selected[0].x, height: root.height
     }, {
-        x: root.area[0].x, y: 0,
-        width: root.area[0].width, height: root.area[0].y 
+        x: selected[0].x, y: 0,
+        width: selected[0].width, height: selected[0].y 
     }, {
-        x: root.area[0].x, y: root.area[0].y + root.area[0].height,
-        width: root.area[0].width, height: root.height
+        x: selected[0].x, y: selected[0].y + selected[0].height,
+        width: selected[0].width, height: root.height
     }, {
-        x: root.area[0].x + root.area[0].width, y: 0,
+        x: selected[0].x + selected[0].width, y: 0,
         width: root.width, height: root.height
     } ];
 
@@ -120,10 +120,10 @@ component Captured inherits Image {
                     })
                 } else {
                     commit(false, {
-                        x: root.area[0].x * pic_width / root.width,
-                        y: root.area[0].y * pic_height / root.height,
-                        width: root.area[0].width * pic_width / root.width,
-                        height: root.area[0].height * pic_height / root.height
+                        x: selected[0].x * pic_width / root.width,
+                        y: selected[0].y * pic_height / root.height,
+                        width: selected[0].width * pic_width / root.width,
+                        height: selected[0].height * pic_height / root.height
                     })
                 }
             }
