@@ -1,0 +1,26 @@
+[package]
+name = "mio-ring"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+# screenshots and image processing
+screenshots = "0.7.2"
+# photon-rs = "0.3.2"
+image = "0.24"
+
+# ui
+slint = "1.1.1"
+
+# utils
+anyhow = { version = "1.0", features = ["backtrace"] }
+itertools = "0.11"
+
+# config
+serde = { version = "1", features = ["derive"] }
+toml = "0.7"
+directories-next = "2.0"
+
+[build-dependencies]
+slint-build = "1.1.1"
