@@ -9,14 +9,14 @@ struct Area2D {
 component Captured inherits Image {
     property <State> state;
     // point in maybe form
-    property <[Point]> point-a;
+    private property <[Point]> point-a;
     // another point in maybe form
-    property <[Point]> point-b;
+    private property <[Point]> point-b;
     // the selected area in maybe form
     out property <[Area2D]> selected;
 
-    function is-valid() -> bool {
-        state != State.rect-plain && point-a.length != 0 && point-b.length != 0
+    function current-pointer-position() -> Point {
+        { x: area.mouse-x, y: area.mouse-y }
     }
 
     // input: two points on xy plane
@@ -36,14 +36,14 @@ component Captured inherits Image {
     callback start-drag;
     start-drag => {
         state = State.rect-drag;
-        point-a = [{ x: area.mouse-x, y: area.mouse-y }];
-        point-b = [];
+        point-a = [current-pointer-position()];
+        point-b = [current-pointer-position()];
     }
 
     callback end-drag;
     end-drag => {
         state = State.rect-hold;
-        point-b = [{ x: area.mouse-x, y: area.mouse-y }];
+        point-b = [current-pointer-position()];
     }
 
     function check-pointer(e: PointerEvent, button: PointerEventButton, kind: PointerEventKind) -> bool {
@@ -62,14 +62,14 @@ component Captured inherits Image {
             compute-anchor-frame();
         }
         moved => {
-            point-b = [{ x: area.mouse-x, y: area.mouse-y }];
+            point-b = [current-pointer-position()];
             compute-anchor-frame();
         }
     }
 
     in property <color> mask-color: #c1c6d4;
 
-    out property <[Area2D]> mask-areas: [ {
+    private property <[Area2D]> mask-areas: [ {
         x: 0, y: 0,
         width: selected[0].x, height: root.height
     }, {
@@ -77,15 +77,15 @@ component Captured inherits Image {
         width: selected[0].width, height: selected[0].y 
     }, {
         x: selected[0].x, y: selected[0].y + selected[0].height,
-        width: selected[0].width, height: root.height
+        width: selected[0].width, height: root.height - selected[0].y - selected[0].height
     }, {
         x: selected[0].x + selected[0].width, y: 0,
-        width: root.width, height: root.height
+        width: root.width - selected[0].x - selected[0].width , height: root.height
     } ];
 
     // four rectangles as masks
     for mask[i] in mask-areas: Rectangle {
-        visible: is-valid();
+        visible: state == State.rect-drag || state == State.rect-hold;
         background: mask-color;
         opacity: 0.5;
         x: mask.x;
@@ -96,7 +96,7 @@ component Captured inherits Image {
 
     // one fallback mask
     Rectangle {
-        visible: !is-valid();
+        visible: state == State.rect-plain;
         background: mask-color;
         opacity: 0.5;
         x: 0;
