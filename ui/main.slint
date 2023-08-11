@@ -12,16 +12,16 @@ component HollowMask {
 
     private property <[Area2D]> mask-areas: [ {
         x: 0, y: 0,
-        width: selected.x, height: root.height
+        width: root.width, height: selected.y
     }, {
-        x: selected.x, y: 0,
-        width: selected.width, height: selected.y 
+        x: 0, y: selected.y,
+        width: selected.x, height: selected.height
     }, {
-        x: selected.x, y: selected.y + selected.height,
-        width: selected.width, height: root.height - selected.y - selected.height
+        x: selected.x + selected.width, y: selected.y,
+        width: root.width - selected.x - selected.width, height: selected.height
     }, {
-        x: selected.x + selected.width, y: 0,
-        width: root.width - selected.x - selected.width , height: root.height
+        x: 0, y: selected.y + selected.height,
+        width: root.width, height: root.height - selected.y - selected.height
     } ];
 
     // four rectangles as masks
