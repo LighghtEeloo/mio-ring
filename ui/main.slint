@@ -10,19 +10,21 @@ component HollowMask {
     in property <Area2D> selected;
     in property <color> mask-color: #c1c6d4;
 
-    private property <[Area2D]> mask-areas: [ {
-        x: 0, y: 0,
-        width: root.width, height: selected.y
-    }, {
-        x: 0, y: selected.y,
-        width: selected.x, height: selected.height
-    }, {
-        x: selected.x + selected.width, y: selected.y,
-        width: root.width - selected.x - selected.width, height: selected.height
-    }, {
-        x: 0, y: selected.y + selected.height,
-        width: root.width, height: root.height - selected.y - selected.height
-    } ];
+    private property <[Area2D]> mask-areas: [
+        {
+            x: 0, y: 0,
+            width: selected.x, height: root.height
+        }, {
+            x: 0, y: 0,
+            width: root.width, height: selected.y 
+        }, {
+            x: 0, y: selected.y + selected.height,
+            width: root.width, height: root.height - selected.y - selected.height
+        }, {
+            x: selected.x + selected.width, y: 0,
+            width: root.width - selected.x - selected.width, height: root.height
+        }
+    ];
 
     // four rectangles as masks
     for mask[i] in mask-areas: Rectangle {
@@ -123,6 +125,7 @@ component Captured inherits Image {
     callback commit(bool, Area2D);
     in property <length> pic_width;
     in property <length> pic_height;
+    callback exit;
 
     // receive keyboard events
     focused := FocusScope {
@@ -141,6 +144,9 @@ component Captured inherits Image {
                         height: selected[0].height * pic_height / root.height
                     })
                 }
+            } else
+            if (e.text == Key.Escape) {
+                exit();
             }
             accept
         }
@@ -153,16 +159,18 @@ component Captured inherits Image {
 
 export component MainWindow inherits Window {
     title: "~ Mio Ring ~";
-    // no-frame: true;
+    no-frame: true;
 
     in property <image> raw-shot;
     in property <length> pic_width <=> cap.pic_width;
     in property <length> pic_height <=> cap.pic_height;
     callback commit(bool, Area2D);
+    callback exit;
 
     cap := Captured {
         source: raw-shot;
         height: 100%;
         commit(is-full, area) => { root.commit(is-full, area); }
+        exit => { exit(); }
     }
 }

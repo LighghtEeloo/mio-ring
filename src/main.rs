@@ -160,6 +160,9 @@ fn main() -> anyhow::Result<()> {
                 .expect("Failed to commit");
             std::process::exit(0)
         });
+        win.on_exit(move || {
+            std::process::exit(0)
+        })
     }
     win.run()?;
     Ok(())
