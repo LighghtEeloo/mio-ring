@@ -5,3 +5,7 @@ Memorized Input-Output as Ring, or `mio-ring` for short, is a information integr
 ## Roadmap
 
 Sounds like a dream too ambitious. Maybe let's just start with a simple screenshot software.
+
+## Current behavior
+
+Clone the repo and run `cargo run --release`. At the moment the program starts, a screenshot should done, then a window should be prompted to ask for instructions on how to crop. After you've done, press return to confirm, or shift+return to save fullscreen. Finally, you'll find the screenshot at `~/Library/Caches/LitiaEeloo.MioRing/...`.
