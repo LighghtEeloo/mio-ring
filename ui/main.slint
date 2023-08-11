@@ -6,6 +6,37 @@ struct Area2D {
     height: length,
 }
 
+component HollowMask {
+    in property <Area2D> selected;
+    in property <color> mask-color: #c1c6d4;
+
+    private property <[Area2D]> mask-areas: [ {
+        x: 0, y: 0,
+        width: selected.x, height: root.height
+    }, {
+        x: selected.x, y: 0,
+        width: selected.width, height: selected.y 
+    }, {
+        x: selected.x, y: selected.y + selected.height,
+        width: selected.width, height: root.height - selected.y - selected.height
+    }, {
+        x: selected.x + selected.width, y: 0,
+        width: root.width - selected.x - selected.width , height: root.height
+    } ];
+
+    // four rectangles as masks
+    for mask[i] in mask-areas: Rectangle {
+        visible: root.visible;
+        background: mask-color;
+        opacity: root.opacity;
+        x: mask.x;
+        y: mask.y;
+        width: mask.width;
+        height: mask.height;
+    }
+
+}
+
 component Captured inherits Image {
     property <State> state;
     // point in maybe form
@@ -69,29 +100,13 @@ component Captured inherits Image {
 
     in property <color> mask-color: #c1c6d4;
 
-    private property <[Area2D]> mask-areas: [ {
-        x: 0, y: 0,
-        width: selected[0].x, height: root.height
-    }, {
-        x: selected[0].x, y: 0,
-        width: selected[0].width, height: selected[0].y 
-    }, {
-        x: selected[0].x, y: selected[0].y + selected[0].height,
-        width: selected[0].width, height: root.height - selected[0].y - selected[0].height
-    }, {
-        x: selected[0].x + selected[0].width, y: 0,
-        width: root.width - selected[0].x - selected[0].width , height: root.height
-    } ];
-
-    // four rectangles as masks
-    for mask[i] in mask-areas: Rectangle {
+    HollowMask {
         visible: state == State.rect-drag || state == State.rect-hold;
-        background: mask-color;
+        mask-color: mask-color;
         opacity: 0.5;
-        x: mask.x;
-        y: mask.y;
-        width: mask.width;
-        height: mask.height;
+        selected: selected[0];
+        width: 100%;
+        height: 100%;
     }
 
     // one fallback mask
