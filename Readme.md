@@ -8,4 +8,4 @@ Sounds like a dream too ambitious. Maybe let's just start with a simple screensh
 
 ## Current behavior
 
-Clone the repo and run `cargo run --release`. At the moment the program starts, a screenshot should done, then a window should be prompted to ask for instructions on how to crop. After you've done, press return to confirm, or shift+return to save fullscreen. Finally, you'll find the screenshot at `~/Library/Caches/LitiaEeloo.MioRing/...`.
+Clone the repo and run `cargo run --release`. At the moment the program starts, a screenshot should done, then a window should be prompted with the screenshot. Drag and select a rectangle area to crop. After you've done, press return to confirm, or shift+return to save fullscreen. Finally, you'll find the screenshot at `~/Library/Caches/LitiaEeloo.MioRing/...`.
