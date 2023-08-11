@@ -15,11 +15,11 @@ component HollowMask {
             x: 0, y: 0,
             width: selected.x, height: root.height
         }, {
-            x: 0, y: 0,
-            width: root.width, height: selected.y 
+            x: selected.x - 0.01px, y: 0,
+            width: selected.width + 0.02px, height: selected.y 
         }, {
-            x: 0, y: selected.y + selected.height,
-            width: root.width, height: root.height - selected.y - selected.height
+            x: selected.x - 0.01px, y: selected.y + selected.height,
+            width: selected.width + 0.02px, height: root.height - selected.y - selected.height
         }, {
             x: selected.x + selected.width, y: 0,
             width: root.width - selected.x - selected.width, height: root.height
@@ -54,8 +54,8 @@ component Captured inherits Image {
 
     // input: two points on xy plane
     // modifies: anchor & frame
-    callback compute-anchor-frame();
-    compute-anchor-frame() => {
+    callback compute-selected();
+    compute-selected() => {
         if (!(point-a.length == 0 || point-b.length == 0)) {
             selected = [{
                 x: min(point-a[0].x, point-b[0].x),
@@ -91,12 +91,14 @@ component Captured inherits Image {
                 end-drag();
             } else if (state == State.rect-hold && check-pointer(e, PointerEventButton.left, PointerEventKind.down)) {
                 start-drag();
+            } else if (check-pointer(e, PointerEventButton.right, PointerEventKind.up)) {
+                exit();
             }
-            compute-anchor-frame();
+            compute-selected();
         }
         moved => {
             point-b = [current-pointer-position()];
-            compute-anchor-frame();
+            compute-selected();
         }
     }
 
