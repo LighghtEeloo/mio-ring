@@ -28,8 +28,6 @@ impl Conf {
 pub struct Cache {
     pub config_root: PathBuf,
     pub cache_root: PathBuf,
-    pub scr_width: f32,
-    pub scr_height: f32,
     pub pic_width: f32,
     pub pic_height: f32,
 }
@@ -40,8 +38,6 @@ impl Cache {
         Self {
             config_root,
             cache_root,
-            scr_width: 1440.,
-            scr_height: 900.,
             pic_width: 0.,
             pic_height: 0.,
         }
@@ -135,11 +131,14 @@ fn main() -> anyhow::Result<()> {
     let raw_path = app.launch()?;
 
     let win = MainWindow::new()?;
+    let info = display_info::DisplayInfo::all()?
+        .into_iter()
+        .exactly_one()?;
     win.window()
         .set_position(slint::LogicalPosition { x: 0., y: 0. });
     win.window().set_size(slint::LogicalSize {
-        width: app.cache.borrow().scr_width,
-        height: app.cache.borrow().scr_height,
+        width: info.width as f32,
+        height: info.height as f32,
     });
     win.set_raw_shot(
         slint::Image::load_from_path(raw_path.as_path())
@@ -160,9 +159,7 @@ fn main() -> anyhow::Result<()> {
                 .expect("Failed to commit");
             std::process::exit(0)
         });
-        win.on_exit(move || {
-            std::process::exit(0)
-        })
+        win.on_exit(move || std::process::exit(0))
     }
     win.run()?;
     Ok(())
