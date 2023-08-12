@@ -53,9 +53,12 @@ pub struct Captured {
 }
 
 impl Captured {
+    pub fn path(&self, parent: impl Into<PathBuf>) -> PathBuf {
+        parent.into().join(format!("{}.png", self.time))
+    }
     pub fn write(&self, parent: impl Into<PathBuf>) -> anyhow::Result<PathBuf> {
         let buffer = self.image.to_png(None)?;
-        let path = parent.into().join(format!("{}.png", self.time));
+        let path = self.path(parent);
         fs::write(&path, buffer)?;
 
         Ok(path)
@@ -99,13 +102,22 @@ impl App<Conf, Cache> {
 
         Ok(Captured { image, time })
     }
-    pub fn launch(&self) -> anyhow::Result<PathBuf> {
-        // Todo: cached?
+    pub fn launch(&self) -> anyhow::Result<(slint::Image, PathBuf)> {
         let captured = self.capture()?;
         self.cache.borrow_mut().pic_height = captured.image.height() as f32;
         self.cache.borrow_mut().pic_width = captured.image.width() as f32;
-        let path = captured.write(&self.cache.borrow().cache_root)?;
-        Ok(path)
+        let cache_parent = &self.cache.borrow().cache_root;
+
+        let raw_path = captured.write(cache_parent)?;
+        let img = slint::Image::load_from_path(raw_path.as_path())
+            .map_err(|_| anyhow!("Failed to load image"))?;
+
+        // Todo: cached?
+        let cached = self.conf.cache_size.is_none();
+        if !cached {
+            std::fs::remove_file(captured.path(cache_parent))?;
+        }
+        Ok((img, raw_path))
     }
     pub fn commit(&self, committed: Committed, raw_path: impl AsRef<Path>) -> anyhow::Result<()> {
         println!("{:?}", committed);
@@ -128,7 +140,7 @@ impl App<Conf, Cache> {
 
 fn main() -> anyhow::Result<()> {
     let app = Rc::new(App::new());
-    let raw_path = app.launch()?;
+    let (raw_shot, raw_path) = app.launch()?;
 
     let win = MainWindow::new()?;
     let info = display_info::DisplayInfo::all()?
@@ -140,10 +152,7 @@ fn main() -> anyhow::Result<()> {
         width: info.width as f32,
         height: info.height as f32,
     });
-    win.set_raw_shot(
-        slint::Image::load_from_path(raw_path.as_path())
-            .map_err(|_| anyhow!("Failed to load image"))?,
-    );
+    win.set_raw_shot(raw_shot);
     win.set_pic_width(app.cache.borrow().pic_width);
     win.set_pic_height(app.cache.borrow().pic_height);
     {
