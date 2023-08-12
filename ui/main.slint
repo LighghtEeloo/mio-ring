@@ -44,8 +44,6 @@ component Resizer inherits Rectangle {
     background: #d9e0e6;
     border-color: #3a3a3a;
     border-width: 1px;
-    // in property <length> a;
-    // in property <length> b;
 }
 
 component SelectedRect {
@@ -83,8 +81,6 @@ component SelectedRect {
         y: position.y - self.size / 2;
         width: self.size;
         height: self.size;
-        // a: self.b;
-        // b: self.a;
     }
 }
 
@@ -94,8 +90,8 @@ component Captured inherits Image {
     private property <[Point]> point-a;
     // another point in maybe form
     private property <[Point]> point-b;
-    // the selected area in maybe form
-    out property <[Area2D]> selected;
+    // the selected area
+    out property <Area2D> selected;
 
     function current-pointer-position() -> Point {
         { x: area.mouse-x, y: area.mouse-y }
@@ -106,12 +102,12 @@ component Captured inherits Image {
     callback compute-selected();
     compute-selected() => {
         if (!(point-a.length == 0 || point-b.length == 0)) {
-            selected = [{
+            selected = {
                 x: min(point-a[0].x, point-b[0].x),
                 y: min(point-a[0].y, point-b[0].y),
                 width: abs((point-a[0].x - point-b[0].x) / 1px) * 1px,
                 height: abs((point-a[0].y - point-b[0].y) / 1px) * 1px
-            }];
+            };
         }
     }
 
@@ -157,7 +153,7 @@ component Captured inherits Image {
         visible: state == State.rect-drag || state == State.rect-hold;
         mask-color: mask-color;
         opacity: 0.5;
-        selected: selected[0];
+        selected: selected;
         width: 100%;
         height: 100%;
     }
@@ -175,7 +171,7 @@ component Captured inherits Image {
 
     SelectedRect {
         visible: state == State.rect-drag || state == State.rect-hold;
-        selected: selected[0];
+        selected <=> selected;
     }
 
     callback commit(bool, Area2D);
@@ -194,10 +190,10 @@ component Captured inherits Image {
                     })
                 } else {
                     commit(false, {
-                        x: selected[0].x * pic_width / root.width,
-                        y: selected[0].y * pic_height / root.height,
-                        width: selected[0].width * pic_width / root.width,
-                        height: selected[0].height * pic_height / root.height
+                        x: selected.x * pic_width / root.width,
+                        y: selected.y * pic_height / root.height,
+                        width: selected.width * pic_width / root.width,
+                        height: selected.height * pic_height / root.height
                     })
                 }
             } else
