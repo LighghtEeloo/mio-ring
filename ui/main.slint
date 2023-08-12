@@ -1,4 +1,3 @@
-enum State { rect-plain, rect-drag, rect-hold }
 struct Area2D {
     x: length,
     y: length,
@@ -39,6 +38,8 @@ component HollowMask {
 
 }
 
+enum DeltaTarget { anchor, frame, neither }
+
 component Resizer inherits Rectangle {
     in property <length> size: 8px;
     background: #d9e0e6;
@@ -61,18 +62,36 @@ component SelectedRect {
         y: selected.y;
         width: selected.width;
         height: selected.height;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            pointer-event(e) => {
+                if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                }
+            }
+        }
     }
 
     // eight resizers
-    private property <[Point]> positions: [
-        { x: selected.x, y: selected.y },
-        { x: selected.x + selected.width / 2, y: selected.y },
-        { x: selected.x + selected.width, y: selected.y },
-        { x: selected.x, y: selected.y + selected.height / 2 },
-        { x: selected.x + selected.width, y: selected.y + selected.height / 2 },
-        { x: selected.x, y: selected.y + selected.height },
-        { x: selected.x + selected.width / 2, y: selected.y + selected.height },
-        { x: selected.x + selected.width, y: selected.y + selected.height },
+    private property <[{ x: length, y: length, dx: DeltaTarget, dy: DeltaTarget }]> positions: [
+        {
+            x: selected.x, y: selected.y
+        }, {
+            x: selected.x + selected.width / 2, y: selected.y
+        }, {
+            x: selected.x + selected.width, y: selected.y
+        }, {
+            x: selected.x, y: selected.y + selected.height / 2
+        }, {
+            x: selected.x + selected.width, y: selected.y + selected.height / 2
+        }, {
+            x: selected.x, y: selected.y + selected.height
+        }, {
+            x: selected.x + selected.width / 2, y: selected.y + selected.height
+        }, {
+            x: selected.x + selected.width, y: selected.y + selected.height
+        },
     ];
 
     for position[i] in positions: Resizer {
@@ -83,6 +102,8 @@ component SelectedRect {
         height: self.size;
     }
 }
+
+enum State { rect-plain, rect-drag, rect-hold }
 
 component Captured inherits Image {
     property <State> state;
