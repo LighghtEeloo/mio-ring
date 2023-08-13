@@ -2173,6 +2173,7 @@ dependencies = [
  "display-info",
  "image",
  "itertools",
+ "rusty-tesseract",
  "screenshots",
  "serde",
  "slint",
@@ -2906,6 +2907,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
 
 [[package]]
+name = "rusty-tesseract"
+version = "1.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af2176026d24dbb67968571c7d464d287934820490ece864e17b88d2e5e3eee8"
+dependencies = [
+ "image",
+ "subprocess",
+ "substring",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "rustybuzz"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3314,6 +3328,25 @@ dependencies = [
  "quote",
  "rustversion",
  "syn 2.0.28",
+]
+
+[[package]]
+name = "subprocess"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c2e86926081dda636c546d8c5e641661049d7562a68f5488be4a1f7f66f6086"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
+name = "substring"
+version = "1.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42ee6433ecef213b2e72f587ef64a2f5943e7cd16fbd82dbe8bc07486c534c86"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]

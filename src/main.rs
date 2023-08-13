@@ -139,6 +139,9 @@ impl App<Conf, Cache> {
 }
 
 fn main() -> anyhow::Result<()> {
+    // let tesseract_version = rusty_tesseract::get_tesseract_version()?;
+    // println!("The tesseract version is: {:?}", tesseract_version);
+
     let app = Rc::new(App::new());
     let (raw_shot, raw_path) = app.launch()?;
 
@@ -147,10 +150,10 @@ fn main() -> anyhow::Result<()> {
         .into_iter()
         .exactly_one()?;
     win.window()
-        .set_position(slint::LogicalPosition { x: 0., y: 0. });
-    win.window().set_size(slint::LogicalSize {
-        width: info.width as f32,
-        height: info.height as f32,
+        .set_position(slint::PhysicalPosition { x: 0, y: 0 });
+    win.window().set_size(slint::PhysicalSize {
+        width: info.width,
+        height: info.height,
     });
     win.set_raw_shot(raw_shot);
     win.set_pic_width(app.cache.borrow().pic_width);
