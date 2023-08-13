@@ -1,3 +1,5 @@
+import { HorizontalBox , Button} from "std-widgets.slint";
+
 struct Area2D {
     x: length,
     y: length,
@@ -103,6 +105,35 @@ component SelectedRect {
     }
 }
 
+component ToolBar inherits HorizontalBox {
+    callback commit-selected();
+    callback commit-full();
+    callback exit();
+
+    spacing: 0;
+    Button {
+        text: "Save";
+        icon: @image-url("icons/done-all.png");
+        clicked => {
+            commit-selected();
+        }
+    }
+    Button {
+        text: "Save Raw";
+        icon: @image-url("icons/full-screen.png");
+        clicked => {
+            commit-full();
+        }
+    }
+    Button {
+        text: "Exit";
+        icon: @image-url("icons/close-small.png");
+        clicked => {
+            exit();
+        }
+    }
+}
+
 enum State { rect-plain, rect-drag, rect-hold }
 
 component Captured inherits Image {
@@ -193,6 +224,22 @@ component Captured inherits Image {
     SelectedRect {
         visible: state == State.rect-drag || state == State.rect-hold;
         selected <=> selected;
+        x: 0;
+        y: 0;
+    }
+
+    ToolBar {
+        height: 60px;
+        width: 180px;
+        commit-selected => {
+            root.commit-selected();
+        }
+        commit-full => {
+            root.commit-full();
+        }
+        exit => {
+            root.exit();
+        }
     }
 
     callback commit(bool, Area2D);
@@ -200,22 +247,32 @@ component Captured inherits Image {
     in property <length> pic_height;
     callback exit();
 
+    callback commit-selected; 
+    commit-selected => {
+        commit(false, {
+            x: selected.x * pic_width / root.width,
+            y: selected.y * pic_height / root.height,
+            width: selected.width * pic_width / root.width,
+            height: selected.height * pic_height / root.height
+        })
+    }
+
+    callback commit-full;
+    commit-full => {
+        commit(true, {
+            x: 0, y: 0,
+            width: 0, height: 0
+        })
+    }
+
     // receive keyboard events
     focuser := FocusScope {
         key-pressed(e) => {
             if (e.text == Key.Return) {
                 if (e.modifiers.shift) {
-                    commit(true, {
-                        x: 0, y: 0,
-                        width: 0, height: 0
-                    })
+                    commit-full();
                 } else {
-                    commit(false, {
-                        x: selected.x * pic_width / root.width,
-                        y: selected.y * pic_height / root.height,
-                        width: selected.width * pic_width / root.width,
-                        height: selected.height * pic_height / root.height
-                    })
+                    commit-selected();
                 }
             } else
             if (e.text == Key.Escape) {
