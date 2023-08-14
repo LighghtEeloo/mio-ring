@@ -168,8 +168,8 @@ fn main() -> anyhow::Result<()> {
                 .expect("Failed to commit");
 
             // Note: OCR attempt
-            let mut lt = leptess::LepTess::new(None, "eng").unwrap();
-            lt.set_image(raw_path.as_path());
+            let mut lt = leptess::LepTess::new(None, "jpn").unwrap();
+            lt.set_image(raw_path.as_path()).unwrap();
             println!("{}", lt.get_utf8_text().unwrap());
 
             std::process::exit(0)
