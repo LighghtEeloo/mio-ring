@@ -139,9 +139,6 @@ impl App<Conf, Cache> {
 }
 
 fn main() -> anyhow::Result<()> {
-    // let tesseract_version = rusty_tesseract::get_tesseract_version()?;
-    // println!("The tesseract version is: {:?}", tesseract_version);
-
     let app = Rc::new(App::new());
     let (raw_shot, raw_path) = app.launch()?;
 
@@ -169,6 +166,12 @@ fn main() -> anyhow::Result<()> {
             app_for_win
                 .commit(committed, raw_path.as_path())
                 .expect("Failed to commit");
+
+            // Note: OCR attempt
+            let mut lt = leptess::LepTess::new(None, "eng").unwrap();
+            lt.set_image(raw_path.as_path());
+            println!("{}", lt.get_utf8_text().unwrap());
+
             std::process::exit(0)
         });
         win.on_exit(move || std::process::exit(0))
