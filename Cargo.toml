@@ -1,3 +1,6 @@
+[workspace]
+members = ["core", "gui"]
+
 [package]
 name = "mio-ring"
 version = "0.1.0"
