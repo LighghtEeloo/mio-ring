@@ -2237,8 +2237,13 @@ dependencies = [
 name = "mio-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "derive_more",
+ "directories-next",
+ "image",
  "itertools",
  "serde",
+ "serde_json",
  "typetag",
 ]
 

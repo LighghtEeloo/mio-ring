@@ -1,20 +1,33 @@
+mod operation;
+
+use derive_more::From;
+use directories_next::ProjectDirs;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     time::SystemTime,
 };
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EntityKind {
     Text,
     Image,
     Audio,
     Video,
 }
+impl EntityKind {
+    pub fn among(&self, other: impl IntoIterator<Item = Self>) -> anyhow::Result<()> {
+        for ref k in other.into_iter() {
+            if self == k {
+                return Ok(());
+            }
+        }
+        anyhow::bail!("type mismatch: found {:?}", self)
+    }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OperationKind {
     Annotation,
     Trim,
@@ -24,14 +37,28 @@ pub enum OperationKind {
     Summarize,
 }
 
-/// the identifier for all mio items including entities, operations and specters
+/// the underlying identifier for all mio ring items including entities, operations and specters
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MioId {
-    /// the unique ord of the entity
-    ord: usize,
+pub struct RingId {
     /// the millisecond timestamp of the entity's creation
     epoch: u64,
+    /// the unique ord of the entity
+    ord: usize,
 }
+
+/// the identifier for all entities and specters
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From)]
+pub struct MioId(RingId);
+impl MioId {
+    pub fn stem(&self) -> String {
+        let MioId(RingId { epoch, ord }) = self;
+        format!("{}-{}", epoch, ord)
+    }
+}
+
+/// the identifier for all operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From)]
+pub struct OpId(RingId);
 
 /// the moment of significant creation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,19 +87,57 @@ impl Ord for Ephemerality {
     }
 }
 
-/// the bases of the mio ring which contains all the raw data
+/// all specters can be actualized, concrete or lazy alike;
+/// it's just for the lazy ones, we need to also actualize the operation
+pub trait Actualize {
+    fn run(&self, mio: &Mio) -> anyhow::Result<()>;
+}
+
+/// all specters can be located, concrete or lazy alike
+pub trait Locatable {
+    fn locate(&self, dirs: &MioDirs) -> PathBuf;
+}
+
+pub trait Specterish: Actualize + Locatable {}
+impl<T: Actualize + Locatable> Specterish for T {}
+
+/// the generalized form of the entity which may represent either an entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Entity {
-    /// the identifier of the entity itself
+pub struct Specter<Body: Actualizer> {
+    /// the identifier of the specter itself
     pub id: MioId,
     /// the kind of the entity
     pub kind: EntityKind,
+    /// the file extension of the entity
+    pub ext: String,
+    /// the identifier of the operation that results in the specter
+    pub body: Body,
+}
+
+#[typetag::serde(tag = "actualizer")]
+pub trait Actualizer {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Concrete {
     /// a pool of ord that can be assigned to the descendants of the entity
     pub pool: HashSet<usize>,
-    /// the path to the resource of the entity in the file system
-    pub path: PathBuf,
     /// the providence of the entity
     pub providence: Providence,
+}
+#[typetag::serde]
+impl Actualizer for Concrete {}
+
+impl Actualize for Specter<Concrete> {
+    /// since concrete specters are always valid, we don't need to do anything
+    fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+impl Locatable for Specter<Concrete> {
+    fn locate(&self, dirs: &MioDirs) -> PathBuf {
+        dirs.data_dir
+            .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
 }
 
 /// where the entity comes from, and how will it be treated
@@ -87,6 +152,26 @@ pub enum Providence {
     Pinned,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Lazy {
+    /// the identifier of the operation that results in the specter
+    pub operation: OpId,
+}
+#[typetag::serde]
+impl Actualizer for Lazy {}
+
+impl Actualize for Specter<Lazy> {
+    fn run(&self, mio: &Mio) -> anyhow::Result<()> {
+        mio.committed.operations[&self.body.operation].run(mio)
+    }
+}
+impl Locatable for Specter<Lazy> {
+    fn locate(&self, dirs: &MioDirs) -> PathBuf {
+        dirs.cache_dir
+            .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
+}
+
 /// the operation that can be done upon specters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Operation {
@@ -95,39 +180,11 @@ pub struct Operation {
     /// the kind of the operation
     pub kind: OperationKind,
     /// the attributes of the operation
-    pub attr: Attr,
+    pub attr: serde_json::Value,
     /// the identifiers of the specters that the operation is based on
     pub base: Vec<MioId>,
     /// the identifier of the resulting specter
-    pub res: MioId,
-}
-
-/// a dynamic polymorphic attribute data structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Attr {
-    Int(i32),
-    Uint(u32),
-    Float(f32),
-    Str(String),
-    Bool(bool),
-    Array(Vec<Attr>),
-    Map(HashMap<String, Attr>),
-}
-
-impl Operation {}
-
-/// the generalized form of the entity which may represent either an entity or an operated entity
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Specter {
-    /// the identifier of the specter itself
-    pub id: MioId,
-    /// the identifier of the operation that results in the specter
-    pub operation: MioId,
-    pub cached: Option<PathBuf>,
-}
-
-impl Specter {
-    pub fn actualize(self) {}
+    pub specter: MioId,
 }
 
 /// allocates new `MioId`s
@@ -150,13 +207,13 @@ impl Alloc {
             ord
         }
     }
-    pub fn allocate(&mut self) -> MioId {
+    pub fn allocate(&mut self) -> RingId {
         let ord = self._allocate();
         let epoch = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
-        MioId { ord, epoch }
+        RingId { ord, epoch }
     }
     pub fn allocate_pool(&mut self, size: usize) -> HashSet<usize> {
         let mut pool = HashSet::with_capacity(size);
@@ -165,7 +222,7 @@ impl Alloc {
         }
         pool
     }
-    pub fn deallocate(&mut self, id: MioId) {
+    pub fn deallocate(&mut self, id: RingId) {
         self.hill.insert(id.ord);
     }
     pub fn garbage_collection(&mut self) {
@@ -185,9 +242,9 @@ impl Alloc {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MioDist {
     /// the operations within the mio ring
-    pub operations: HashMap<MioId, Operation>,
+    pub operations: HashMap<OpId, Operation>,
     /// the specters within the mio ring
-    pub specters: HashMap<MioId, Specter>,
+    pub specters: HashMap<MioId, Specter<Lazy>>,
 }
 
 impl MioDist {
@@ -214,13 +271,40 @@ impl std::ops::AddAssign for MioDist {
     }
 }
 
-/// each entity, once created, can be cached into a `MioThread` to concurrently operate on different entities;
-/// note that the thread will stall if a specter from another thread is used during calculation, in which case
-/// the common specter should be elevated into another `Entity`
+// /// each entity, once created, can be cached into a `MioThread` to concurrently operate on different entities;
+// /// note that the thread will stall if a specter from another thread is used during calculation, in which case
+// /// the common specter should be elevated into another `Entity`
+// #[derive(Debug, Clone)]
+// pub struct MioThread<'mio> {
+//     pub mio: &'mio Mio,
+//     pub entity: Specter<Concrete>,
+//     pub cached: MioDist,
+// }
+
+/// path manager for mio ring which synthesizes new paths
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MioThread {
-    pub entity: Entity,
-    pub cached: MioDist,
+pub struct MioDirs {
+    pub config_dir: PathBuf,
+    pub cache_dir: PathBuf,
+    pub data_dir: PathBuf,
+}
+
+impl MioDirs {
+    pub fn new() -> Self {
+        let proj_dirs =
+            ProjectDirs::from("", "LitiaEeloo", "MioRing").expect("failed to find project dirs");
+        Self {
+            config_dir: proj_dirs.config_dir().to_path_buf(),
+            cache_dir: proj_dirs.cache_dir().to_path_buf(),
+            data_dir: proj_dirs.data_dir().to_path_buf(),
+        }
+    }
+}
+
+impl Default for MioDirs {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 const POOL_SIZE: usize = 8;
@@ -228,6 +312,9 @@ const POOL_SIZE: usize = 8;
 /// the main data structure of the mio ring
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mio {
+    /// the path manager
+    #[serde(skip)]
+    pub dirs: MioDirs,
     /// the allocator of `MioId`s
     pub alloc: Alloc,
     /// the null entity
@@ -235,7 +322,7 @@ pub struct Mio {
     /// the ephemerality in chronological order
     pub chronology: Vec<Ephemerality>,
     /// the entities within the mio ring
-    pub entities: HashMap<MioId, Entity>,
+    pub entities: HashMap<MioId, Specter<Concrete>>,
     /// the committed distributed operations
     pub committed: MioDist,
 }
@@ -243,8 +330,9 @@ pub struct Mio {
 impl Mio {
     pub fn new() -> Self {
         let mut alloc = Alloc::default();
-        let null = alloc.allocate();
+        let null = alloc.allocate().into();
         Self {
+            dirs: MioDirs::new(),
             alloc,
             null,
             chronology: Vec::new(),
@@ -254,29 +342,60 @@ impl Mio {
     }
 
     /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, kind: EntityKind, path: PathBuf) -> MioThread {
-        let id = self.alloc.allocate();
-        let entity = Entity {
+    pub fn register(&mut self, kind: EntityKind, ext: String) -> MioId {
+        let id = self.alloc.allocate().into();
+        let body = Concrete {
+            pool: self.alloc.allocate_pool(POOL_SIZE),
+            providence: Providence::Registered,
+        };
+        let entity = Specter {
             id,
             kind,
-            pool: self.alloc.allocate_pool(POOL_SIZE),
-            path,
-            providence: Providence::Registered,
+            ext,
+            body,
         };
         self.chronology.push(Ephemerality {
             time: SystemTime::now(),
             base: id,
         });
-        self.entities.insert(id, entity.clone());
-        MioThread {
-            entity,
-            cached: MioDist::new(),
+        self.entities.insert(id, entity);
+        id
+    }
+
+    // pub fn spawn(&self, id: &MioId) -> MioThread {
+    //     MioThread {
+    //         mio: self,
+    //         entity: self.entities[id].clone(),
+    //         cached: todo!(),
+    //     }
+    // }
+
+    // /// commit a mio thread into the mio ring
+    // pub fn commit(&mut self, thread: MioThread) {
+    //     self.entities
+    //         .insert(thread.entity.id, thread.entity)
+    //         .expect("entity not found");
+    //     self.committed += thread.cached;
+    // }
+
+    pub fn kind(&self, id: &MioId) -> EntityKind {
+        if let Some(entity) = self.entities.get(id) {
+            entity.kind
+        } else if let Some(specter) = self.committed.specters.get(id) {
+            specter.kind
+        } else {
+            unreachable!("entity or specter not found")
         }
     }
 
-    pub fn commit(&mut self, thread: MioThread) {
-        self.entities.insert(thread.entity.id, thread.entity).expect("entity not found");
-        self.committed += thread.cached;
+    pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
+        if let Some(entity) = self.entities.get(id) {
+            Box::new(entity.clone())
+        } else if let Some(specter) = self.committed.specters.get(id) {
+            Box::new(specter.clone())
+        } else {
+            unreachable!("specter not found")
+        }
     }
 }
 
@@ -288,14 +407,16 @@ impl Default for Mio {
 
 // pub struct Cached {}
 
-// /// the operation that can be done upon specters
-// pub trait Morphism {
-//     /// the type of the source data needed, usually not dynamically polymorphic
-//     type Source: Sized;
-//     /// the type of the result, could be polymorphic or not
-//     type Target;
-//     /// validate the kind and existence of source and return it if valid
-//     fn prepare(&self) -> Option<Self::Source>;
-//     /// apply the morphism
-//     fn execute(self, source: Self::Source) -> Self::Target;
-// }
+/// the operation that can be done upon specters
+pub trait Morphism: Sized + for<'de> Deserialize<'de> {
+    type Source<'a>;
+    type Target<'a>;
+
+    /// validate the kind and existence of source and return it if valid
+    fn prepare(op: &Operation) -> anyhow::Result<Self> {
+        let value = serde_json::from_value(op.attr.clone())?;
+        Ok(value)
+    }
+    /// apply the morphism
+    fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
+}
