@@ -5,6 +5,7 @@ use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Display,
     path::PathBuf,
     time::SystemTime,
 };
@@ -15,16 +16,6 @@ pub enum EntityKind {
     Image,
     Audio,
     Video,
-}
-impl EntityKind {
-    pub fn among(&self, other: impl IntoIterator<Item = Self>) -> anyhow::Result<()> {
-        for ref k in other.into_iter() {
-            if self == k {
-                return Ok(());
-            }
-        }
-        anyhow::bail!("type mismatch: found {:?}", self)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,31 +78,77 @@ impl Ord for Ephemerality {
     }
 }
 
+/// all specters have a kind
+pub trait WithEntityKind {
+    fn kind(&self) -> EntityKind;
+}
+
+/// all specters can be located, concrete or lazy alike
+pub trait Locatable {
+    fn locate(&self, dirs: &MioDirs) -> PathBuf;
+    fn exists(&self, dirs: &MioDirs) -> bool {
+        self.locate(dirs).exists()
+    }
+}
+
 /// all specters can be actualized, concrete or lazy alike;
 /// it's just for the lazy ones, we need to also actualize the operation
 pub trait Actualize {
     fn run(&self, mio: &Mio) -> anyhow::Result<()>;
 }
 
-/// all specters can be located, concrete or lazy alike
-pub trait Locatable {
-    fn locate(&self, dirs: &MioDirs) -> PathBuf;
-}
-
-pub trait Specterish: Actualize + Locatable {}
-impl<T: Actualize + Locatable> Specterish for T {}
+/// and all specters should be specterish
+pub trait Specterish: WithEntityKind + Locatable + Actualize {}
+impl<T: WithEntityKind + Actualize + Locatable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either an entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Specter<Body: Actualizer> {
     /// the identifier of the specter itself
     pub id: MioId,
-    /// the kind of the entity
-    pub kind: EntityKind,
-    /// the file extension of the entity
-    pub ext: String,
-    /// the identifier of the operation that results in the specter
+    /// the file extension of the resulting entity
+    pub ext: EntityExt,
+    /// the actualizer of the specter
     pub body: Body,
+}
+impl<Body: Actualizer> WithEntityKind for Specter<Body> {
+    fn kind(&self) -> EntityKind {
+        self.ext.kind()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EntityExt {
+    Txt,
+    Url,
+    Png,
+    Jpg,
+    // Mp3,
+    // Mp4,
+}
+impl WithEntityKind for EntityExt {
+    fn kind(&self) -> EntityKind {
+        match self {
+            EntityExt::Txt => EntityKind::Text,
+            EntityExt::Url => EntityKind::Text,
+            EntityExt::Png => EntityKind::Image,
+            EntityExt::Jpg => EntityKind::Image,
+            // EntityExt::Mp3 => EntityKind::Audio,
+            // EntityExt::Mp4 => EntityKind::Video,
+        }
+    }
+}
+impl Display for EntityExt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntityExt::Txt => write!(f, "txt"),
+            EntityExt::Url => write!(f, "url"),
+            EntityExt::Png => write!(f, "png"),
+            EntityExt::Jpg => write!(f, "jpg"),
+            // EntityExt::Mp3 => write!(f, "mp3"),
+            // EntityExt::Mp4 => write!(f, "mp4"),
+        }
+    }
 }
 
 #[typetag::serde(tag = "actualizer")]
@@ -127,16 +164,16 @@ pub struct Concrete {
 #[typetag::serde]
 impl Actualizer for Concrete {}
 
-impl Actualize for Specter<Concrete> {
-    /// since concrete specters are always valid, we don't need to do anything
-    fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
 impl Locatable for Specter<Concrete> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.data_dir
             .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
+}
+impl Actualize for Specter<Concrete> {
+    /// since concrete specters are always valid, we don't need to do anything
+    fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -160,15 +197,41 @@ pub struct Lazy {
 #[typetag::serde]
 impl Actualizer for Lazy {}
 
-impl Actualize for Specter<Lazy> {
-    fn run(&self, mio: &Mio) -> anyhow::Result<()> {
-        mio.committed.operations[&self.body.operation].run(mio)
-    }
-}
 impl Locatable for Specter<Lazy> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.cache_dir
             .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
+}
+impl Actualize for Specter<Lazy> {
+    fn run(&self, mio: &Mio) -> anyhow::Result<()> {
+        if self.exists(&mio.dirs) {
+            return Ok(());
+        } else {
+            mio.committed.operations[&self.body.operation].run(mio)
+        }
+    }
+}
+impl Specter<Lazy> {
+    /// elevate an actualized lazy specter to a concrete specter
+    pub fn elevate(self, dirs: &MioDirs) -> anyhow::Result<Specter<Concrete>> {
+        if self.exists(dirs) {
+            let old_path = self.locate(dirs);
+            let specter = Specter {
+                id: self.id,
+                ext: self.ext,
+                body: Concrete {
+                    pool: HashSet::new(),
+                    providence: Providence::Induced,
+                },
+            };
+            // move the file from cache to data
+            std::fs::copy(old_path.as_path(), specter.locate(dirs))?;
+            std::fs::remove_file(old_path.as_path())?;
+            Ok(specter)
+        } else {
+            anyhow::bail!("specter not actualized")
+        }
     }
 }
 
@@ -293,10 +356,16 @@ impl MioDirs {
     pub fn new() -> Self {
         let proj_dirs =
             ProjectDirs::from("", "LitiaEeloo", "MioRing").expect("failed to find project dirs");
+        let config_dir = proj_dirs.config_dir().to_path_buf();
+        let cache_dir = proj_dirs.cache_dir().to_path_buf();
+        let data_dir = proj_dirs.data_dir().to_path_buf();
+        std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
+        std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
+        std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
         Self {
-            config_dir: proj_dirs.config_dir().to_path_buf(),
-            cache_dir: proj_dirs.cache_dir().to_path_buf(),
-            data_dir: proj_dirs.data_dir().to_path_buf(),
+            config_dir,
+            cache_dir,
+            data_dir,
         }
     }
 }
@@ -342,18 +411,13 @@ impl Mio {
     }
 
     /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, kind: EntityKind, ext: String) -> MioId {
+    pub fn register(&mut self, ext: EntityExt) -> MioId {
         let id = self.alloc.allocate().into();
         let body = Concrete {
             pool: self.alloc.allocate_pool(POOL_SIZE),
             providence: Providence::Registered,
         };
-        let entity = Specter {
-            id,
-            kind,
-            ext,
-            body,
-        };
+        let entity = Specter { id, ext, body };
         self.chronology.push(Ephemerality {
             time: SystemTime::now(),
             base: id,
@@ -377,16 +441,6 @@ impl Mio {
     //         .expect("entity not found");
     //     self.committed += thread.cached;
     // }
-
-    pub fn kind(&self, id: &MioId) -> EntityKind {
-        if let Some(entity) = self.entities.get(id) {
-            entity.kind
-        } else if let Some(specter) = self.committed.specters.get(id) {
-            specter.kind
-        } else {
-            unreachable!("entity or specter not found")
-        }
-    }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
         if let Some(entity) = self.entities.get(id) {

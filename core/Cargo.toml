@@ -13,6 +13,8 @@ directories-next = "2.0"
 derive_more = "0.99"
 
 image = { version = "0.24", optional = true }
+leptess = { version = "0.14", optional = true }
 
 [features]
-default = ["image"]
+default = ["image", "ocr"]
+ocr = ["leptess"]

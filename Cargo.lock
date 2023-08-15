@@ -2242,6 +2242,7 @@ dependencies = [
  "directories-next",
  "image",
  "itertools",
+ "leptess",
  "serde",
  "serde_json",
  "typetag",

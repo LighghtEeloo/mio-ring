@@ -11,9 +11,7 @@ build = "build.rs"
 # screenshots and image processing
 screenshots = "0.7.2"
 display-info = "0.4.2"
-# photon-rs = "0.3.2"
 image = "0.24"
-# rusty-tesseract = "1.1.7"
 leptess = "0.14"
 
 # ui
