@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "gui"]
+members = ["core", "observer", "gui"]
 
 [package]
 name = "mio-ring"

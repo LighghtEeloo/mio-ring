@@ -462,7 +462,7 @@ impl Default for Mio {
 // pub struct Cached {}
 
 /// the operation that can be done upon specters
-pub trait Morphism: Sized + for<'de> Deserialize<'de> {
+pub trait Operator: Sized + for<'de> Deserialize<'de> {
     type Source<'a>;
     type Target<'a>;
 

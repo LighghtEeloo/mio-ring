@@ -103,7 +103,7 @@ mod image_impl {
         pub height: u32,
     }
 
-    impl Morphism for CropImage {
+    impl Operator for CropImage {
         type Source<'a> = &'a Path;
         type Target<'a> = &'a Path;
         fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
@@ -124,7 +124,7 @@ mod ocr_impl {
         pub lang: String,
     }
 
-    impl Morphism for OcrText {
+    impl Operator for OcrText {
         type Source<'a> = &'a Path;
         type Target<'a> = &'a Path;
         fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
