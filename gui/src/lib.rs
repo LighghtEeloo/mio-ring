@@ -1,14 +1,13 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use dioxus::prelude::*;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct App;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl App {
+    pub fn run(cx: Scope) -> Element {
+        cx.render(rsx! {
+            div {
+                "Hello, world!"
+            }
+        })
     }
 }
