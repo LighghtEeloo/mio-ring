@@ -1,43 +1,45 @@
+#![allow(non_snake_case)]
+
 use dioxus::prelude::*;
+use dioxus_router::prelude::*;
 
-pub fn app(cx: Scope) -> Element {
-    cx.render(rsx! {
-        mio_thread {}
-    })
+pub fn App(cx: Scope) -> Element {
+    render! {
+        Router::<Route> {}
+    }
 }
 
-#[derive(PartialEq, Props)]
-pub struct MioThread {
-
+#[derive(Clone, Routable, Debug, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/blog/:id")]
+    Blog { id: i32 },
 }
 
-pub fn mio_thread(cx: Scope<MioThread>) -> Element {
-    cx.render(rsx! {
-        img {
-            src: "https://i.imgur.com/8XvzW0U.png",
+#[inline_props]
+fn Blog(cx: Scope, id: i32) -> Element {
+    render! {
+        Link { to: Route::Home {}, "Go to counter" }
+        "Blog post {id}"
+    }
+}
+
+#[inline_props]
+fn Home(cx: Scope) -> Element {
+    let mut count = use_state(cx, || 0);
+
+    render! {
+        Link {
+            to: Route::Blog {
+                id: *count.get()
+            },
+            "Go to blog"
         }
-    })
+        div {
+            h1 { "High-Five counter: {count}" }
+            button { onclick: move |_| count += 1, "Up high!" }
+            button { onclick: move |_| count -= 1, "Down low!" }
+        }
+    }
 }
-
-// use clipboard_master::{CallbackResult, ClipboardHandler, Master};
-
-// struct Handler;
-
-// impl ClipboardHandler for Handler {
-//     fn on_clipboard_change(&mut self) -> CallbackResult {
-//         let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
-//         let contents = ctx.get_contents().unwrap();
-//         println!("Clipboard contents: {}", contents);
-//         CallbackResult::Next
-//     }
-
-//     fn on_clipboard_error(&mut self, error: io::Error) -> CallbackResult {
-//         eprintln!("Error: {}", error);
-//         CallbackResult::Next
-//     }
-// }
-
-// pub fn observe_clipboard() -> anyhow::Result<()> {
-//     let () = Master::new(Handler).run()?;
-//     Ok(())
-// }

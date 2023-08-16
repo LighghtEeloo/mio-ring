@@ -1,7 +1,4 @@
-use mio_ring::app;
-
 fn main() {
-    // launch the dioxus app in a webview
-    dioxus_desktop::launch(app);
+    dioxus_logger::init(log::LevelFilter::Info).expect("failed to init logger");
+    dioxus_desktop::launch(mio_ring::App);
 }
-
