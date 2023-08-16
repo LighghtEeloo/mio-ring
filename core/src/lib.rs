@@ -422,26 +422,29 @@ impl Mio {
     }
 
     /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, ext: EntityExt, src: &Path) -> anyhow::Result<()> {
-        let id = self.alloc.allocate().into();
-        let entity = Specter {
-            id,
-            ext,
-            deps: Vec::new(),
-            body: Concrete {
-                pool: self.alloc.allocate_pool(POOL_SIZE),
-                providence: Providence::Registered,
-            },
-        };
-        self.chronology.push(Ephemerality {
-            time: SystemTime::now(),
-            base: id,
-        });
-        self.entities
-            .entry(id)
-            .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
-            .or_insert(entity)
-            .replace(&self.dirs, src)
+    pub fn register(&mut self, persister: impl Persistable) -> anyhow::Result<()> {
+        for (src, ext) in persister.persist()? {
+            let id = self.alloc.allocate().into();
+            let entity = Specter {
+                id,
+                ext,
+                deps: Vec::new(),
+                body: Concrete {
+                    pool: self.alloc.allocate_pool(POOL_SIZE),
+                    providence: Providence::Registered,
+                },
+            };
+            self.chronology.push(Ephemerality {
+                time: SystemTime::now(),
+                base: id,
+            });
+            self.entities
+                .entry(id)
+                .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
+                .or_insert(entity)
+                .replace(&self.dirs, src.as_path())?
+        }
+        Ok(())
     }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
@@ -465,7 +468,7 @@ impl Default for Mio {
 
 /// the persistable can be persisted into the file system
 pub trait Persistable {
-    fn persist(&self) -> anyhow::Result<Vec<PathBuf>>;
+    fn persist(&self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>>;
 }
 
 /// the operable can be done upon specters

@@ -7,12 +7,12 @@ mod screenshot_impl {
     pub struct ScreenShot;
 
     impl Persistable for ScreenShot {
-        fn persist(&self) -> anyhow::Result<Vec<PathBuf>> {
+        fn persist(&self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>> {
             let screen = screenshots::Screen::all()?.into_iter().exactly_one()?;
             let image = screen.capture()?.to_png(None)?;
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(image.as_slice())?;
-            Ok(vec![file.path().to_path_buf()])
+            Ok(vec![(file.path().to_path_buf(), EntityExt::Png)])
         }
     }
 }
@@ -29,12 +29,12 @@ mod clipboard_impl {
     pub struct Clipboard;
 
     impl Persistable for Clipboard {
-        fn persist(&self) -> anyhow::Result<Vec<PathBuf>> {
+        fn persist(&self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>> {
             let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
             let contents = ctx.get_contents().unwrap();
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(contents.as_bytes())?;
-            Ok(vec![file.path().to_path_buf()])
+            Ok(vec![(file.path().to_path_buf(), EntityExt::Txt)])
         }
     }
 }
