@@ -89,6 +89,18 @@ pub trait Locatable {
     fn exists(&self, dirs: &MioDirs) -> bool {
         self.locate(dirs).exists()
     }
+    fn write(&self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
+        std::fs::write(self.locate(dirs), content)?;
+        Ok(())
+    }
+    // fn write_str(&self, dirs: &MioDirs, content: &str) -> anyhow::Result<()> {
+    //     std::fs::write(self.locate(dirs), content)?;
+    //     Ok(())
+    // }
+    fn remove(&self, dirs: &MioDirs) -> anyhow::Result<()> {
+        std::fs::remove_file(self.locate(dirs))?;
+        Ok(())
+    }
 }
 
 /// all specters can be actualized, concrete or lazy alike;
@@ -101,13 +113,15 @@ pub trait Actualize {
 pub trait Specterish: WithEntityKind + Locatable + Actualize {}
 impl<T: WithEntityKind + Actualize + Locatable> Specterish for T {}
 
-/// the generalized form of the entity which may represent either an entity or an operated entity
+/// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Specter<Body: Actualizer> {
     /// the identifier of the specter itself
     pub id: MioId,
-    /// the file extension of the resulting entity
+    /// the file extension, or "type", of the resulting entity
     pub ext: EntityExt,
+    /// operations that directly depend on this specter
+    pub deps: Vec<OpId>,
     /// the actualizer of the specter
     pub body: Body,
 }
@@ -158,7 +172,7 @@ pub trait Actualizer {}
 pub struct Concrete {
     /// a pool of ord that can be assigned to the descendants of the entity
     pub pool: HashSet<usize>,
-    /// the providence of the entity
+    /// where the entity comes from, and how will it be treated
     pub providence: Providence,
 }
 #[typetag::serde]
@@ -204,11 +218,12 @@ impl Locatable for Specter<Lazy> {
     }
 }
 impl Actualize for Specter<Lazy> {
+    /// if the specter exists, do nothing; otherwise, run the operation
     fn run(&self, mio: &Mio) -> anyhow::Result<()> {
         if self.exists(&mio.dirs) {
             return Ok(());
         } else {
-            mio.committed.operations[&self.body.operation].run(mio)
+            mio.operations[&self.body.operation].run(mio)
         }
     }
 }
@@ -220,6 +235,7 @@ impl Specter<Lazy> {
             let specter = Specter {
                 id: self.id,
                 ext: self.ext,
+                deps: self.deps,
                 body: Concrete {
                     pool: HashSet::new(),
                     providence: Providence::Induced,
@@ -301,48 +317,33 @@ impl Alloc {
     }
 }
 
-/// the distributed operations and resulting specters within the mio ring
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MioDist {
-    /// the operations within the mio ring
-    pub operations: HashMap<OpId, Operation>,
-    /// the specters within the mio ring
-    pub specters: HashMap<MioId, Specter<Lazy>>,
+/// each entity, once created, can be cached into a `MioThread` to concurrently operate on different entities;
+/// note that the thread will stall if a specter from another thread is used during calculation, in which case
+/// the common specter should be elevated into another `Entity`
+#[derive(Debug, Clone)]
+pub struct MioThread {
+    pub base: MioId,
+    pub ops: Vec<OpId>,
 }
-
-impl MioDist {
-    pub fn new() -> Self {
+impl MioThread {
+    /// spawn a new mio thread
+    pub fn new(base: MioId) -> Self {
         Self {
-            operations: HashMap::new(),
-            specters: HashMap::new(),
+            base,
+            ops: Vec::new(),
         }
     }
-}
-
-impl Default for MioDist {
-    fn default() -> Self {
-        Self::new()
+    fn add(&mut self, op: OpId) {
+        self.ops.push(op);
     }
 }
 
-/// `MioDist` may seem like a monoid, but the RHS will overwrite the LHS if overlapped,
-/// so `+=` is implemented instead of `+` to remind the user of the potential overwrite
-impl std::ops::AddAssign for MioDist {
-    fn add_assign(&mut self, other: Self) {
-        self.operations.extend(other.operations);
-        self.specters.extend(other.specters);
+impl std::ops::AddAssign<OpId> for MioThread {
+    /// append a new operation to the mio thread
+    fn add_assign(&mut self, op: OpId) {
+        self.add(op);
     }
 }
-
-// /// each entity, once created, can be cached into a `MioThread` to concurrently operate on different entities;
-// /// note that the thread will stall if a specter from another thread is used during calculation, in which case
-// /// the common specter should be elevated into another `Entity`
-// #[derive(Debug, Clone)]
-// pub struct MioThread<'mio> {
-//     pub mio: &'mio Mio,
-//     pub entity: Specter<Concrete>,
-//     pub cached: MioDist,
-// }
 
 /// path manager for mio ring which synthesizes new paths
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -392,8 +393,10 @@ pub struct Mio {
     pub chronology: Vec<Ephemerality>,
     /// the entities within the mio ring
     pub entities: HashMap<MioId, Specter<Concrete>>,
-    /// the committed distributed operations
-    pub committed: MioDist,
+    /// the operations within the mio ring
+    pub operations: HashMap<OpId, Operation>,
+    /// the specters within the mio ring
+    pub specters: HashMap<MioId, Specter<Lazy>>,
 }
 
 impl Mio {
@@ -406,46 +409,34 @@ impl Mio {
             null,
             chronology: Vec::new(),
             entities: HashMap::new(),
-            committed: MioDist::new(),
+            operations: HashMap::new(),
+            specters: HashMap::new(),
         }
     }
 
     /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, ext: EntityExt) -> MioId {
+    pub fn register(&mut self, ext: EntityExt) -> &Specter<Concrete> {
         let id = self.alloc.allocate().into();
-        let body = Concrete {
-            pool: self.alloc.allocate_pool(POOL_SIZE),
-            providence: Providence::Registered,
+        let entity = Specter {
+            id,
+            ext,
+            deps: Vec::new(),
+            body: Concrete {
+                pool: self.alloc.allocate_pool(POOL_SIZE),
+                providence: Providence::Registered,
+            },
         };
-        let entity = Specter { id, ext, body };
         self.chronology.push(Ephemerality {
             time: SystemTime::now(),
             base: id,
         });
-        self.entities.insert(id, entity);
-        id
+        self.entities.entry(id).or_insert(entity)
     }
-
-    // pub fn spawn(&self, id: &MioId) -> MioThread {
-    //     MioThread {
-    //         mio: self,
-    //         entity: self.entities[id].clone(),
-    //         cached: todo!(),
-    //     }
-    // }
-
-    // /// commit a mio thread into the mio ring
-    // pub fn commit(&mut self, thread: MioThread) {
-    //     self.entities
-    //         .insert(thread.entity.id, thread.entity)
-    //         .expect("entity not found");
-    //     self.committed += thread.cached;
-    // }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
         if let Some(entity) = self.entities.get(id) {
             Box::new(entity.clone())
-        } else if let Some(specter) = self.committed.specters.get(id) {
+        } else if let Some(specter) = self.specters.get(id) {
             Box::new(specter.clone())
         } else {
             unreachable!("specter not found")
