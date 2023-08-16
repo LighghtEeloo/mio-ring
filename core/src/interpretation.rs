@@ -112,12 +112,37 @@ pub enum MioDelete {
     Operation(OpId),
 }
 
+#[derive(Default)]
+pub struct MioDeleted {
+    pub mio_id: Vec<MioId>,
+    pub op_id: Vec<OpId>,
+}
+
+impl AddAssign for MioDeleted {
+    fn add_assign(&mut self, rhs: Self) {
+        self.mio_id.extend(rhs.mio_id);
+        self.op_id.extend(rhs.op_id);
+    }
+}
+impl AddAssign<MioId> for MioDeleted {
+    fn add_assign(&mut self, rhs: MioId) {
+        self.mio_id.push(rhs);
+    }
+}
+impl AddAssign<OpId> for MioDeleted {
+    fn add_assign(&mut self, rhs: OpId) {
+        self.op_id.push(rhs);
+    }
+}
+
 impl Interpretable for MioDelete {
     type Mio<'a> = &'a mut Mio;
-    type Target = ();
+    type Target = MioDeleted;
     fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
+        let mut deleted = MioDeleted::default();
         match self {
             MioDelete::Specter(id) => {
+                deleted += id;
                 let specter = mio
                     .ring
                     .entities
@@ -126,19 +151,20 @@ impl Interpretable for MioDelete {
                 mio.alloc.deallocate(id.into());
                 mio.chronology.retain(|e| e.base != id);
                 for dep in specter.deps {
-                    MioDelete::Operation(dep).interpret(mio)?;
+                    deleted += MioDelete::Operation(dep).interpret(mio)?;
                 }
             }
             MioDelete::Operation(id) => {
+                deleted += id;
                 let operation = mio
                     .ring
                     .operations
                     .remove(&id)
                     .ok_or_else(|| anyhow::anyhow!("operation not found"))?;
                 mio.alloc.deallocate(id.into());
-                MioDelete::Specter(operation.specter).interpret(mio)?;
+                deleted += MioDelete::Specter(operation.specter).interpret(mio)?;
             }
         }
-        Ok(())
+        Ok(deleted)
     }
 }

@@ -13,6 +13,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     io::Write,
+    ops::AddAssign,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -399,6 +400,16 @@ pub struct MioRing {
 impl MioRing {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn delete(&mut self, deleted: MioDeleted) {
+        for id in deleted.mio_id {
+            self.entities.remove(&id);
+            self.specters.remove(&id);
+        }
+        for id in deleted.op_id {
+            self.operations.remove(&id);
+        }
     }
 }
 
