@@ -273,6 +273,25 @@ pub struct Operation {
     pub specter: MioId,
 }
 
+/// the persistable can be persisted into the file system
+pub trait Persistable {
+    fn persist(&mut self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>>;
+}
+
+/// the operable can be done upon specters
+pub trait Operable: Sized + for<'de> Deserialize<'de> {
+    type Source<'a>;
+    type Target<'a>;
+
+    /// validate the kind and existence of source and return it if valid
+    fn prepare(op: &Operation) -> anyhow::Result<Self> {
+        let value = serde_json::from_value(op.attr.clone())?;
+        Ok(value)
+    }
+    /// apply the operator
+    fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
+}
+
 /// allocates new `MioId`s
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Alloc {
@@ -421,8 +440,8 @@ impl Mio {
         }
     }
 
-    /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, persister: impl Persistable) -> anyhow::Result<()> {
+    /// run a persistable and memorize its entities into the mio ring
+    pub fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
         for (src, ext) in persister.persist()? {
             let id = self.alloc.allocate().into();
             let entity = Specter {
@@ -462,25 +481,4 @@ impl Default for Mio {
     fn default() -> Self {
         Self::new()
     }
-}
-
-// pub struct Cached {}
-
-/// the persistable can be persisted into the file system
-pub trait Persistable {
-    fn persist(&self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>>;
-}
-
-/// the operable can be done upon specters
-pub trait Operable: Sized + for<'de> Deserialize<'de> {
-    type Source<'a>;
-    type Target<'a>;
-
-    /// validate the kind and existence of source and return it if valid
-    fn prepare(op: &Operation) -> anyhow::Result<Self> {
-        let value = serde_json::from_value(op.attr.clone())?;
-        Ok(value)
-    }
-    /// apply the operator
-    fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
 }

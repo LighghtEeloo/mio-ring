@@ -1,17 +1,23 @@
 use dioxus::prelude::*;
 
-pub struct App;
-
-impl App {
-    pub fn run(cx: Scope) -> Element {
-        cx.render(rsx! {
-            div {
-                "Hello, world!"
-            }
+pub fn app(cx: Scope) -> Element {
+    cx.render(rsx! {
+        mio_thread {}
     })
-    }
 }
 
+#[derive(PartialEq, Props)]
+pub struct MioThread {
+
+}
+
+pub fn mio_thread(cx: Scope<MioThread>) -> Element {
+    cx.render(rsx! {
+        img {
+            src: "https://i.imgur.com/8XvzW0U.png",
+        }
+    })
+}
 
 // use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 
