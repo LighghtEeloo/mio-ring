@@ -1,7 +1,11 @@
+mod interpretation;
 mod operation;
 mod persistence;
 
-use derive_more::From;
+pub use interpretation::*;
+pub use persistence::*;
+
+use derive_more::{From, Into};
 use directories_next::ProjectDirs;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -41,7 +45,7 @@ pub struct RingId {
 }
 
 /// the identifier for all entities and specters
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From, Into)]
 pub struct MioId(RingId);
 impl MioId {
     pub fn stem(&self) -> String {
@@ -51,7 +55,7 @@ impl MioId {
 }
 
 /// the identifier for all operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From, Into)]
 pub struct OpId(RingId);
 
 /// the moment of significant creation
@@ -82,7 +86,7 @@ impl Ord for Ephemerality {
 }
 
 /// all specters have a kind
-pub trait WithEntityKind {
+pub trait HasEntityKind {
     fn kind(&self) -> EntityKind;
 }
 
@@ -117,8 +121,8 @@ pub trait Actualizable {
 }
 
 /// and all specters should be specterish
-pub trait Specterish: WithEntityKind + Locatable + Actualizable {}
-impl<T: WithEntityKind + Actualizable + Locatable> Specterish for T {}
+pub trait Specterish: HasEntityKind + Locatable + Actualizable {}
+impl<T: HasEntityKind + Actualizable + Locatable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,7 +136,7 @@ pub struct Specter<Body: Actualizer> {
     /// the actualizer of the specter
     pub body: Body,
 }
-impl<Body: Actualizer> WithEntityKind for Specter<Body> {
+impl<Body: Actualizer> HasEntityKind for Specter<Body> {
     fn kind(&self) -> EntityKind {
         self.ext.kind()
     }
@@ -147,7 +151,7 @@ pub enum EntityExt {
     // Mp3,
     // Mp4,
 }
-impl WithEntityKind for EntityExt {
+impl HasEntityKind for EntityExt {
     fn kind(&self) -> EntityKind {
         match self {
             EntityExt::Txt => EntityKind::Text,
@@ -230,7 +234,7 @@ impl Actualizable for Specter<Lazy> {
         if self.exists(&mio.dirs) {
             return Ok(());
         } else {
-            mio.operations[&self.body.operation].run(mio)
+            mio.ring.operations[&self.body.operation].run(mio)
         }
     }
 }
@@ -262,7 +266,7 @@ impl Specter<Lazy> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Operation {
     /// the identifier of the operation itself
-    pub id: MioId,
+    pub id: OpId,
     /// the kind of the operation
     pub kind: OperationKind,
     /// the attributes of the operation
@@ -290,6 +294,44 @@ pub trait Operable: Sized + for<'de> Deserialize<'de> {
     }
     /// apply the operator
     fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
+}
+
+pub trait Interpretable {
+    type Mio<'a>;
+    type Target;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target>;
+}
+
+/// path manager for mio ring which synthesizes new paths
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MioDirs {
+    pub config_dir: PathBuf,
+    pub cache_dir: PathBuf,
+    pub data_dir: PathBuf,
+}
+
+impl MioDirs {
+    pub fn new() -> Self {
+        let proj_dirs =
+            ProjectDirs::from("", "LitiaEeloo", "MioRing").expect("failed to find project dirs");
+        let config_dir = proj_dirs.config_dir().to_path_buf();
+        let cache_dir = proj_dirs.cache_dir().to_path_buf();
+        let data_dir = proj_dirs.data_dir().to_path_buf();
+        std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
+        std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
+        std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
+        Self {
+            config_dir,
+            cache_dir,
+            data_dir,
+        }
+    }
+}
+
+impl Default for MioDirs {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// allocates new `MioId`s
@@ -343,63 +385,20 @@ impl Alloc {
     }
 }
 
-/// each entity, once created, can be cached into a `MioThread` to concurrently operate on different entities;
-/// note that the thread will stall if a specter from another thread is used during calculation, in which case
-/// the common specter should be elevated into another `Entity`
-#[derive(Debug, Clone)]
-pub struct MioThread {
-    pub base: MioId,
-    pub ops: Vec<OpId>,
-}
-impl MioThread {
-    /// spawn a new mio thread
-    pub fn new(base: MioId) -> Self {
-        Self {
-            base,
-            ops: Vec::new(),
-        }
-    }
-    fn add(&mut self, op: OpId) {
-        self.ops.push(op);
-    }
+/// the mapping of the mio ring
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct MioRing {
+    /// the entities within the mio ring
+    pub entities: HashMap<MioId, Specter<Concrete>>,
+    /// the operations within the mio ring
+    pub operations: HashMap<OpId, Operation>,
+    /// the specters within the mio ring
+    pub specters: HashMap<MioId, Specter<Lazy>>,
 }
 
-impl std::ops::AddAssign<OpId> for MioThread {
-    /// append a new operation to the mio thread
-    fn add_assign(&mut self, op: OpId) {
-        self.add(op);
-    }
-}
-
-/// path manager for mio ring which synthesizes new paths
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MioDirs {
-    pub config_dir: PathBuf,
-    pub cache_dir: PathBuf,
-    pub data_dir: PathBuf,
-}
-
-impl MioDirs {
+impl MioRing {
     pub fn new() -> Self {
-        let proj_dirs =
-            ProjectDirs::from("", "LitiaEeloo", "MioRing").expect("failed to find project dirs");
-        let config_dir = proj_dirs.config_dir().to_path_buf();
-        let cache_dir = proj_dirs.cache_dir().to_path_buf();
-        let data_dir = proj_dirs.data_dir().to_path_buf();
-        std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
-        std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
-        std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
-        Self {
-            config_dir,
-            cache_dir,
-            data_dir,
-        }
-    }
-}
-
-impl Default for MioDirs {
-    fn default() -> Self {
-        Self::new()
+        Self::default()
     }
 }
 
@@ -417,12 +416,7 @@ pub struct Mio {
     pub null: MioId,
     /// the ephemerality in chronological order
     pub chronology: Vec<Ephemerality>,
-    /// the entities within the mio ring
-    pub entities: HashMap<MioId, Specter<Concrete>>,
-    /// the operations within the mio ring
-    pub operations: HashMap<OpId, Operation>,
-    /// the specters within the mio ring
-    pub specters: HashMap<MioId, Specter<Lazy>>,
+    pub ring: MioRing,
 }
 
 impl Mio {
@@ -434,42 +428,14 @@ impl Mio {
             alloc,
             null,
             chronology: Vec::new(),
-            entities: HashMap::new(),
-            operations: HashMap::new(),
-            specters: HashMap::new(),
+            ring: MioRing::new(),
         }
-    }
-
-    /// run a persistable and memorize its entities into the mio ring
-    pub fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
-        for (src, ext) in persister.persist()? {
-            let id = self.alloc.allocate().into();
-            let entity = Specter {
-                id,
-                ext,
-                deps: Vec::new(),
-                body: Concrete {
-                    pool: self.alloc.allocate_pool(POOL_SIZE),
-                    providence: Providence::Registered,
-                },
-            };
-            self.chronology.push(Ephemerality {
-                time: SystemTime::now(),
-                base: id,
-            });
-            self.entities
-                .entry(id)
-                .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
-                .or_insert(entity)
-                .replace(&self.dirs, src.as_path())?
-        }
-        Ok(())
     }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
-        if let Some(entity) = self.entities.get(id) {
+        if let Some(entity) = self.ring.entities.get(id) {
             Box::new(entity.clone())
-        } else if let Some(specter) = self.specters.get(id) {
+        } else if let Some(specter) = self.ring.specters.get(id) {
             Box::new(specter.clone())
         } else {
             unreachable!("specter not found")

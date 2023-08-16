@@ -1,5 +1,34 @@
 use super::*;
 
+impl Mio {
+    /// run a persistable and memorize its entities into the mio ring
+    fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
+        for (src, ext) in persister.persist()? {
+            let id = self.alloc.allocate().into();
+            let entity = Specter {
+                id,
+                ext,
+                deps: Vec::new(),
+                body: Concrete {
+                    pool: self.alloc.allocate_pool(POOL_SIZE),
+                    providence: Providence::Registered,
+                },
+            };
+            self.chronology.push(Ephemerality {
+                time: SystemTime::now(),
+                base: id,
+            });
+            self.ring
+                .entities
+                .entry(id)
+                .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
+                .or_insert(entity)
+                .replace(&self.dirs, src.as_path())?
+        }
+        Ok(())
+    }
+}
+
 #[cfg(feature = "screenshot")]
 mod screenshot_impl {
     use super::*;
@@ -13,6 +42,14 @@ mod screenshot_impl {
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(image.as_slice())?;
             Ok(vec![(file.path().to_path_buf(), EntityExt::Png)])
+        }
+    }
+
+    impl Interpretable for ScreenShot {
+        type Mio<'a> = &'a mut Mio;
+        type Target = ();
+        fn interpret<'a>(mut self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
+            mio.register(&mut self)
         }
     }
 }
@@ -46,6 +83,14 @@ mod clipboard_impl {
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(contents.as_bytes())?;
             Ok(vec![(file.path().to_path_buf(), EntityExt::Txt)])
+        }
+    }
+
+    impl Interpretable for Clipboard {
+        type Mio<'a> = &'a mut Mio;
+        type Target = ();
+        fn interpret<'a>(mut self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
+            mio.register(&mut self)
         }
     }
 }
