@@ -1,12 +1,15 @@
 mod operation;
+mod persistence;
 
 use derive_more::From;
 use directories_next::ProjectDirs;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    path::PathBuf,
+    io::Write,
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 
@@ -89,15 +92,19 @@ pub trait Locatable {
     fn exists(&self, dirs: &MioDirs) -> bool {
         self.locate(dirs).exists()
     }
-    fn write(&self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
+    fn write(&mut self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
         std::fs::write(self.locate(dirs), content)?;
+        Ok(())
+    }
+    fn replace(&mut self, dirs: &MioDirs, alt: &Path) -> anyhow::Result<()> {
+        std::fs::copy(alt, self.locate(dirs))?;
         Ok(())
     }
     // fn write_str(&self, dirs: &MioDirs, content: &str) -> anyhow::Result<()> {
     //     std::fs::write(self.locate(dirs), content)?;
     //     Ok(())
     // }
-    fn remove(&self, dirs: &MioDirs) -> anyhow::Result<()> {
+    fn remove(&mut self, dirs: &MioDirs) -> anyhow::Result<()> {
         std::fs::remove_file(self.locate(dirs))?;
         Ok(())
     }
@@ -105,13 +112,13 @@ pub trait Locatable {
 
 /// all specters can be actualized, concrete or lazy alike;
 /// it's just for the lazy ones, we need to also actualize the operation
-pub trait Actualize {
+pub trait Actualizable {
     fn run(&self, mio: &Mio) -> anyhow::Result<()>;
 }
 
 /// and all specters should be specterish
-pub trait Specterish: WithEntityKind + Locatable + Actualize {}
-impl<T: WithEntityKind + Actualize + Locatable> Specterish for T {}
+pub trait Specterish: WithEntityKind + Locatable + Actualizable {}
+impl<T: WithEntityKind + Actualizable + Locatable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,7 +191,7 @@ impl Locatable for Specter<Concrete> {
             .join(format!("{}.{}", self.id.stem(), self.ext))
     }
 }
-impl Actualize for Specter<Concrete> {
+impl Actualizable for Specter<Concrete> {
     /// since concrete specters are always valid, we don't need to do anything
     fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
         Ok(())
@@ -217,7 +224,7 @@ impl Locatable for Specter<Lazy> {
             .join(format!("{}.{}", self.id.stem(), self.ext))
     }
 }
-impl Actualize for Specter<Lazy> {
+impl Actualizable for Specter<Lazy> {
     /// if the specter exists, do nothing; otherwise, run the operation
     fn run(&self, mio: &Mio) -> anyhow::Result<()> {
         if self.exists(&mio.dirs) {
@@ -415,7 +422,7 @@ impl Mio {
     }
 
     /// create a new mio thread while memorizing its entity into the mio ring
-    pub fn register(&mut self, ext: EntityExt) -> &Specter<Concrete> {
+    pub fn register(&mut self, ext: EntityExt, src: &Path) -> anyhow::Result<()> {
         let id = self.alloc.allocate().into();
         let entity = Specter {
             id,
@@ -430,7 +437,11 @@ impl Mio {
             time: SystemTime::now(),
             base: id,
         });
-        self.entities.entry(id).or_insert(entity)
+        self.entities
+            .entry(id)
+            .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
+            .or_insert(entity)
+            .replace(&self.dirs, src)
     }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
@@ -452,8 +463,13 @@ impl Default for Mio {
 
 // pub struct Cached {}
 
-/// the operation that can be done upon specters
-pub trait Operator: Sized + for<'de> Deserialize<'de> {
+/// the persistable can be persisted into the file system
+pub trait Persistable {
+    fn persist(&self) -> anyhow::Result<Vec<PathBuf>>;
+}
+
+/// the operable can be done upon specters
+pub trait Operable: Sized + for<'de> Deserialize<'de> {
     type Source<'a>;
     type Target<'a>;
 

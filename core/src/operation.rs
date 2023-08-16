@@ -1,6 +1,4 @@
 use super::*;
-use itertools::Itertools;
-use std::path::Path;
 
 impl EntityKind {
     pub fn synthesize_operations(&self) -> Vec<OperationKind> {
@@ -25,7 +23,7 @@ impl EntityKind {
     }
 }
 
-impl Actualize for Operation {
+impl Actualizable for Operation {
     /// an enum dispatch for all
     fn run(&self, mio: &Mio) -> anyhow::Result<()> {
         let base = self.base.clone();
@@ -103,7 +101,7 @@ mod image_impl {
         pub height: u32,
     }
 
-    impl Operator for CropImage {
+    impl Operable for CropImage {
         type Source<'a> = &'a Path;
         type Target<'a> = &'a Path;
         fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
@@ -124,7 +122,7 @@ mod ocr_impl {
         pub lang: String,
     }
 
-    impl Operator for OcrText {
+    impl Operable for OcrText {
         type Source<'a> = &'a Path;
         type Target<'a> = &'a Path;
         fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
