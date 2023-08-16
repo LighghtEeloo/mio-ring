@@ -1,4 +1,4 @@
-use mio_gui::App;
+use mio_ring::App;
 
 fn main() {
     // launch the dioxus app in a webview
