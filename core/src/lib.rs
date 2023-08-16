@@ -183,7 +183,7 @@ pub enum Providence {
     /// manually created
     #[default]
     Registered,
-    /// generated during operation
+    /// elevated during operation
     Induced,
     /// pinned by user
     Pinned,
@@ -471,6 +471,6 @@ pub trait Operator: Sized + for<'de> Deserialize<'de> {
         let value = serde_json::from_value(op.attr.clone())?;
         Ok(value)
     }
-    /// apply the morphism
+    /// apply the operator
     fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
 }
