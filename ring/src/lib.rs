@@ -19,6 +19,7 @@ enum Route {
 fn Home(cx: Scope) -> Element {
     render! {
         div {
+            ">_<"
         }
     }
 }

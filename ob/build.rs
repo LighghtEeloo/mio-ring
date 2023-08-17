@@ -1,5 +1,4 @@
-use windres::Build;
-
 fn main() {
-    Build::new().compile("tray.rc").unwrap();
+    #[cfg(target_os = "windows")]
+    windres::Build::new().compile("tray.rc").unwrap();
 }
