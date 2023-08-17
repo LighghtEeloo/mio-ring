@@ -1,2 +1,2 @@
 [workspace]
-members = ["core", "ring"]
+members = ["core", "ob", "ring"]
