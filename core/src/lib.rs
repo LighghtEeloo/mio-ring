@@ -594,7 +594,7 @@ impl Mio {
                 // all success
                 return mio;
             } else {
-                // can't parse, backup current file
+                log::warn!("can't parse mio index, backup current file");
                 std::fs::rename(
                     &dirs.index_path,
                     &dirs.data_dir.join(format!(
@@ -608,7 +608,7 @@ impl Mio {
                 .expect("can't parse mio index, rename to bak file also failed");
             }
         }
-        // create mio index file if not exists or can't parse
+        log::info!("creating mio index file since it either doesn't exist or can't be correctly parsed");
         Self::with_dirs(dirs)
     }
 
