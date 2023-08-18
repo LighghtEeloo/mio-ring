@@ -2,7 +2,7 @@ use super::*;
 
 impl Mio {
     /// run a persistable and memorize its entities into the mio ring
-    fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<Vec<MioId>> {
+    fn register(&mut self, persister: &impl Persistable) -> anyhow::Result<Vec<MioId>> {
         let mut ids = Vec::new();
         for (src, ext) in persister.persist()? {
             let id = self.alloc.allocate().into();
@@ -35,12 +35,15 @@ mod screenshot_impl {
     pub struct ScreenShot;
 
     impl Persistable for ScreenShot {
-        fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
-            let screen = screenshots::Screen::all()?.into_iter().exactly_one()?;
-            let image = screen.capture()?.to_png(None)?;
-            let mut file = NamedTempFile::new()?;
-            file.write_all(image.as_slice())?;
-            Ok(vec![(file, EntityExt::Png)])
+        fn persist(&self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
+            let mut v = Vec::new();
+            for screen in screenshots::Screen::all()?.into_iter() {
+                let image = screen.capture()?.to_png(None)?;
+                let mut file = NamedTempFile::new()?;
+                file.write_all(image.as_slice())?;
+                v.push((file, EntityExt::Png));
+            }
+            Ok(v)
         }
     }
 
@@ -57,16 +60,18 @@ pub use screenshot_impl::ScreenShot;
 
 #[cfg(feature = "clipboard")]
 mod clipboard_impl {
+    use std::{cell::RefCell, rc::Rc};
+
     use super::*;
 
     pub struct Clipboard {
-        board: arboard::Clipboard,
+        board: Rc<RefCell<arboard::Clipboard>>,
     }
 
     impl Clipboard {
         pub fn new() -> anyhow::Result<Self> {
             Ok(Self {
-                board: arboard::Clipboard::new()?,
+                board: Rc::new(RefCell::new(arboard::Clipboard::new()?)),
             })
         }
     }
@@ -77,11 +82,27 @@ mod clipboard_impl {
     }
 
     impl Persistable for Clipboard {
-        fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
-            let contents = self.board.get_text().unwrap();
-            let mut file = tempfile::NamedTempFile::new()?;
-            file.write_all(contents.as_bytes())?;
-            Ok(vec![(file, EntityExt::Txt)])
+        fn persist(&self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
+            let mut board = self.board.borrow_mut();
+            if let Ok(contents) = board.get_text() {
+                let mut file = tempfile::NamedTempFile::new()?;
+                file.write_all(contents.as_bytes())?;
+                Ok(vec![(file, EntityExt::Txt)])
+            } else if let Ok(contents) = board.get_image() {
+                use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
+                let mut file = tempfile::NamedTempFile::new()?;
+                let buf = ImageBuffer::from_raw(
+                    contents.width as u32,
+                    contents.height as u32,
+                    contents.bytes.into_owned(),
+                )
+                .ok_or_else(|| anyhow::anyhow!("failed to decode clipboard image"))?;
+                DynamicImage::ImageRgba8(buf).write_to(&mut file, ImageOutputFormat::Png)?;
+                Ok(vec![(file, EntityExt::Png)])
+            } else {
+                log::warn!("clipboard is empty or has unsupported content");
+                Ok(Vec::new())
+            }
         }
     }
 

@@ -1,4 +1,6 @@
-use mio_core::{CropImage, Interpretable, Mio, MioForce, MioInitiate, OcrText, ScreenShot};
+use mio_core::{
+    Clipboard, CropImage, Interpretable, Mio, MioForce, MioInitiate, OcrText, ScreenShot,
+};
 // use tray_item::{IconSource, TrayItem};
 
 fn main() -> anyhow::Result<()> {
@@ -19,6 +21,7 @@ fn main() -> anyhow::Result<()> {
 
     // read
     let mut mio = Mio::read_or_bak_with_default();
+
     // screenshot
     let ids = ScreenShot.interpret(&mut mio)?;
     // crop
@@ -45,6 +48,11 @@ fn main() -> anyhow::Result<()> {
     .interpret(&mut mio)?;
     let ids = diff.specters.keys().copied().collect();
     let () = MioForce { ids }.interpret(&mio)?;
+
+    // clipboard
+    let clipboard = Clipboard::new()?;
+    let _ids = clipboard.interpret(&mut mio)?;
+
     // save
     mio.flush()?;
     eprintln!("{:#?}", mio);

@@ -13,6 +13,7 @@ anyhow = "1.0"
 directories-next = "2.0"
 derive_more = "0.99"
 tempfile = "3"
+log = "0.4"
 
 screenshots = { version = "0.7", optional = true }
 arboard = { version = "3.2", optional = true }

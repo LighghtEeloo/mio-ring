@@ -331,7 +331,7 @@ impl Operation {
 
 /// the persistable can be persisted into the file system
 pub trait Persistable {
-    fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>>;
+    fn persist(&self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>>;
 }
 
 /// the operable can be done upon specters

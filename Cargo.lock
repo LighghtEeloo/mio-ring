@@ -2245,6 +2245,7 @@ dependencies = [
  "image",
  "itertools",
  "leptess",
+ "log",
  "screenshots",
  "serde",
  "serde_json",
