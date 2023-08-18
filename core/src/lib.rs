@@ -401,24 +401,19 @@ pub struct Alloc {
 
 impl Alloc {
     fn _allocate(&mut self) -> usize {
-        let from_hill = self.hill.inner.iter().next().copied();
-        from_hill
-            .map(|ord| {
-                self.hill.inner.remove(&ord);
-                ord
-            })
-            .unwrap_or_else(|| {
-                let ord = self.ord;
-                self.ord += 1;
-                ord
-            })
+        self.hill._allocate().unwrap_or_else(|| {
+            let ord = self.ord;
+            self.ord += 1;
+            ord
+        })
     }
     pub fn allocate(&mut self) -> RingId {
         RingId::now(self._allocate())
     }
     pub fn allocate_pool(&mut self, size: usize) -> AllocPool {
-        let mut inner = HashSet::with_capacity(size);
-        for _ in 0..size {
+        let mut inner = self.hill.try_allocate_many(size);
+        let current = inner.len();
+        for _ in current..size {
             inner.insert(self._allocate());
         }
         AllocPool { inner }
@@ -445,11 +440,26 @@ pub struct AllocPool {
 }
 
 impl AllocPool {
-    pub fn allocate(&mut self) -> Option<RingId> {
+    fn _allocate(&mut self) -> Option<usize> {
         self.inner.iter().next().copied().map(|ord| {
             self.inner.remove(&ord);
-            RingId::now(ord)
+            ord
         })
+    }
+    pub fn allocate(&mut self) -> Option<RingId> {
+        self._allocate().map(RingId::now)
+    }
+    /// try to allocate as many as possible, but may not be able to allocate all
+    fn try_allocate_many(&mut self, size: usize) -> HashSet<usize> {
+        let mut inner = HashSet::with_capacity(size);
+        for _ in 0..size {
+            if let Some(ord) = self._allocate() {
+                inner.insert(ord);
+            } else {
+                break;
+            }
+        }
+        inner
     }
 }
 
@@ -504,7 +514,10 @@ pub struct Mio {
     pub null: MioId,
     /// the ephemerality in chronological order
     pub chronology: Vec<Ephemerality>,
+    /// the mio ring
     pub ring: MioRing,
+    /// the ring of the archived, storing the yet-to-be-garbage-collected
+    pub archived: MioRing,
 }
 
 impl Mio {
@@ -517,6 +530,7 @@ impl Mio {
             null,
             chronology: Vec::new(),
             ring: MioRing::new(),
+            archived: MioRing::new(),
         }
     }
 
