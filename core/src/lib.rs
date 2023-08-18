@@ -17,6 +17,7 @@ use std::{
     path::{Path, PathBuf},
     time::SystemTime,
 };
+use tempfile::NamedTempFile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EntityKind {
@@ -280,7 +281,7 @@ pub struct Operation {
 
 /// the persistable can be persisted into the file system
 pub trait Persistable {
-    fn persist(&mut self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>>;
+    fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>>;
 }
 
 /// the operable can be done upon specters
@@ -309,6 +310,7 @@ pub struct MioDirs {
     pub config_dir: PathBuf,
     pub cache_dir: PathBuf,
     pub data_dir: PathBuf,
+    pub index_path: PathBuf,
 }
 
 impl MioDirs {
@@ -318,6 +320,7 @@ impl MioDirs {
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let data_dir = proj_dirs.data_dir().to_path_buf();
+        let index_path = data_dir.join("index.bin");
         std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
         std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
         std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
@@ -325,6 +328,7 @@ impl MioDirs {
             config_dir,
             cache_dir,
             data_dir,
+            index_path,
         }
     }
 }
@@ -431,16 +435,47 @@ pub struct Mio {
 }
 
 impl Mio {
-    pub fn new() -> Self {
+    fn with_dirs(dirs: MioDirs) -> Self {
         let mut alloc = Alloc::default();
         let null = alloc.allocate().into();
         Self {
-            dirs: MioDirs::new(),
+            dirs,
             alloc,
             null,
             chronology: Vec::new(),
             ring: MioRing::new(),
         }
+    }
+
+    pub fn read_or_bak_with_default() -> Self {
+        let dirs = MioDirs::new();
+        if let Ok(mio_content) = std::fs::read(&dirs.index_path) {
+            if let Ok(mio) = bincode::deserialize(&mio_content) {
+                // all success
+                return mio;
+            } else {
+                // can't parse, backup current file
+                std::fs::rename(
+                    &dirs.index_path,
+                    &dirs.data_dir.join(format!(
+                        "index.{}.bin.bak",
+                        SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .expect("get system time failed")
+                            .as_millis()
+                    )),
+                )
+                .expect("can't parse mio index, rename to bak file also failed");
+            }
+        }
+        // create mio index file if not exists or can't parse
+        Self::with_dirs(dirs)
+    }
+
+    pub fn flush(&self) -> anyhow::Result<()> {
+        let mio_content = bincode::serialize(self)?;
+        let () = std::fs::write(&self.dirs.index_path, mio_content)?;
+        Ok(())
     }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
@@ -456,6 +491,6 @@ impl Mio {
 
 impl Default for Mio {
     fn default() -> Self {
-        Self::new()
+        Self::with_dirs(MioDirs::default())
     }
 }

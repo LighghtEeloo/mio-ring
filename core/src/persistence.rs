@@ -2,7 +2,7 @@ use super::*;
 
 impl Mio {
     /// run a persistable and memorize its entities into the mio ring
-    fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
+    pub fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
         for (src, ext) in persister.persist()? {
             let id = self.alloc.allocate().into();
             let entity = Specter {
@@ -23,7 +23,7 @@ impl Mio {
                 .entry(id)
                 .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
                 .or_insert(entity)
-                .replace(&self.dirs, src.as_path())?
+                .replace(&self.dirs, src.path())?
         }
         Ok(())
     }
@@ -36,12 +36,12 @@ mod screenshot_impl {
     pub struct ScreenShot;
 
     impl Persistable for ScreenShot {
-        fn persist(&mut self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>> {
+        fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
             let screen = screenshots::Screen::all()?.into_iter().exactly_one()?;
             let image = screen.capture()?.to_png(None)?;
-            let mut file = tempfile::NamedTempFile::new()?;
+            let mut file = NamedTempFile::new()?;
             file.write_all(image.as_slice())?;
-            Ok(vec![(file.path().to_path_buf(), EntityExt::Png)])
+            Ok(vec![(file, EntityExt::Png)])
         }
     }
 
@@ -78,11 +78,11 @@ mod clipboard_impl {
     }
 
     impl Persistable for Clipboard {
-        fn persist(&mut self) -> anyhow::Result<Vec<(PathBuf, EntityExt)>> {
+        fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
             let contents = self.board.get_text().unwrap();
             let mut file = tempfile::NamedTempFile::new()?;
             file.write_all(contents.as_bytes())?;
-            Ok(vec![(file.path().to_path_buf(), EntityExt::Txt)])
+            Ok(vec![(file, EntityExt::Txt)])
         }
     }
 

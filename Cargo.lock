@@ -2187,6 +2187,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "bincode",
  "derive_more",
  "directories-next",
  "image",
@@ -2204,6 +2205,7 @@ name = "mio-ob"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "mio-core",
  "tray-item",
  "windres",
 ]
@@ -2217,6 +2219,7 @@ dependencies = [
  "dioxus-logger",
  "dioxus-router",
  "log",
+ "mio-core",
 ]
 
 [[package]]

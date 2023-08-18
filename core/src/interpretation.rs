@@ -1,28 +1,7 @@
 use super::*;
 
-impl Mio {
-    /// initiate an operation
-    fn initiate(&mut self, kind: OperationKind) -> anyhow::Result<&mut Operation> {
-        let id = self.alloc.allocate().into();
-        let specter = self.alloc.allocate().into();
-        let operation = Operation {
-            id,
-            kind,
-            attr: serde_json::Value::Null,
-            base: Vec::new(),
-            specter,
-        };
-        Ok(self
-            .ring
-            .operations
-            .entry(id)
-            .and_modify(|e| unreachable!("duplicate entry found when initiating {:?}", e))
-            .or_insert(operation))
-    }
-}
-
 pub struct MioView {
-    pub view: Vec<Ephemerality>,
+    pub timeline: Vec<Ephemerality>,
     pub ring: MioRing,
 }
 
@@ -38,10 +17,10 @@ impl Interpretable for MioViewAnchor {
     fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
         let low = (self.anchor - self.former).clamp(0, mio.chronology.len() - 1);
         let high = (self.anchor + self.latter).clamp(0, mio.chronology.len() - 1);
-        let view = mio.chronology[low..=high].iter().cloned().collect_vec();
+        let timeline = mio.chronology[low..=high].iter().cloned().collect_vec();
         let mut ring = MioRing::new();
 
-        let mut required = view.iter().map(|e| e.base).collect::<HashSet<_>>();
+        let mut required = timeline.iter().map(|e| e.base).collect::<HashSet<_>>();
         let mut done = HashSet::new();
 
         while required.difference(&done).count() > 0 {
@@ -73,7 +52,7 @@ impl Interpretable for MioViewAnchor {
                 required.insert(operation.specter);
             }
         }
-        Ok(MioView { view, ring })
+        Ok(MioView { timeline, ring })
     }
 }
 
@@ -81,6 +60,27 @@ pub struct MioInitiate {
     pub kind: OperationKind,
     pub attr: serde_json::Value,
     pub base: Vec<MioId>,
+}
+
+impl Mio {
+    /// initiate an operation
+    fn initiate(&mut self, kind: OperationKind) -> anyhow::Result<&mut Operation> {
+        let id = self.alloc.allocate().into();
+        let specter = self.alloc.allocate().into();
+        let operation = Operation {
+            id,
+            kind,
+            attr: serde_json::Value::Null,
+            base: Vec::new(),
+            specter,
+        };
+        Ok(self
+            .ring
+            .operations
+            .entry(id)
+            .and_modify(|e| unreachable!("duplicate entry found when initiating {:?}", e))
+            .or_insert(operation))
+    }
 }
 
 impl Interpretable for MioInitiate {

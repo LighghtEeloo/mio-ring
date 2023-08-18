@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 use dioxus_router::prelude::*;
+use mio_core::MioView;
 
 pub fn App(cx: Scope) -> Element {
     render! {
@@ -17,9 +18,12 @@ enum Route {
 
 #[inline_props]
 fn Home(cx: Scope) -> Element {
+    let _view = use_state(cx, || MioView {
+        timeline: vec![],
+        ring: Default::default(),
+    });
     render! {
         div {
-            ">_<"
         }
     }
 }
