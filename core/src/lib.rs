@@ -68,7 +68,7 @@ impl Ord for Ephemerality {
 }
 
 /// all specters have a kind
-pub trait HasEntityKind {
+pub trait EntityLike {
     fn kind(&self) -> EntityKind;
     fn ext_hint(&self) -> EntityExt {
         match self.kind() {
@@ -79,7 +79,7 @@ pub trait HasEntityKind {
         }
     }
 }
-impl HasEntityKind for EntityKind {
+impl EntityLike for EntityKind {
     fn kind(&self) -> EntityKind {
         *self
     }
@@ -107,7 +107,11 @@ pub trait Locatable {
 
 /// all specters can be added to the ring
 pub trait Ringable {
+    fn identifier(&self) -> RingId;
+    fn deps(&self) -> Vec<RingId>;
+    fn deps_push(&mut self, dep: RingId) -> anyhow::Result<()>;
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()>;
+    fn unring(&self, ring: &mut MioRing) -> anyhow::Result<()>;
 }
 
 /// all specters may allocate new `MioId`s
@@ -122,8 +126,8 @@ pub trait Actualizable {
 }
 
 /// and all specters should be specterish
-pub trait Specterish: HasEntityKind + Locatable + Ringable + Allocable + Actualizable {}
-impl<T: HasEntityKind + Locatable + Ringable + Allocable + Actualizable> Specterish for T {}
+pub trait Specterish: EntityLike + Locatable + Ringable + Allocable + Actualizable {}
+impl<T: EntityLike + Locatable + Ringable + Allocable + Actualizable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +141,7 @@ pub struct Specter<Body: Actualizer> {
     /// the actualizer of the specter
     pub body: Body,
 }
-impl<Body: Actualizer> HasEntityKind for Specter<Body> {
+impl<Body: Actualizer> EntityLike for Specter<Body> {
     fn kind(&self) -> EntityKind {
         self.ext.kind()
     }
@@ -155,7 +159,7 @@ pub enum EntityExt {
     Mp3,
     Mp4,
 }
-impl HasEntityKind for EntityExt {
+impl EntityLike for EntityExt {
     fn kind(&self) -> EntityKind {
         match self {
             EntityExt::Txt => EntityKind::Text,
@@ -200,8 +204,22 @@ impl Locatable for Specter<Concrete> {
     }
 }
 impl Ringable for Specter<Concrete> {
+    fn identifier(&self) -> RingId {
+        self.id.into()
+    }
+    fn deps(&self) -> Vec<RingId> {
+        self.deps.iter().copied().map(Into::into).collect()
+    }
+    fn deps_push(&mut self, dep: RingId) -> anyhow::Result<()> {
+        self.deps.push(dep.into());
+        Ok(())
+    }
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
         self.ring_and(ring)?;
+        Ok(())
+    }
+    fn unring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        ring.entities.remove(&self.id);
         Ok(())
     }
 }
@@ -253,8 +271,22 @@ impl Locatable for Specter<Lazy> {
     }
 }
 impl Ringable for Specter<Lazy> {
+    fn identifier(&self) -> RingId {
+        self.id.into()
+    }
+    fn deps(&self) -> Vec<RingId> {
+        self.deps.iter().copied().map(Into::into).collect()
+    }
+    fn deps_push(&mut self, dep: RingId) -> anyhow::Result<()> {
+        self.deps.push(dep.into());
+        Ok(())
+    }
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
         self.ring_and(ring)?;
+        Ok(())
+    }
+    fn unring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        ring.specters.remove(&self.id);
         Ok(())
     }
 }
@@ -317,6 +349,27 @@ pub struct Operation {
     pub base: Vec<MioId>,
     /// the identifier of the resulting specter
     pub specter: MioId,
+}
+
+impl Ringable for Operation {
+    fn identifier(&self) -> RingId {
+        self.id.into()
+    }
+    fn deps(&self) -> Vec<RingId> {
+        self.base.iter().copied().map(Into::into).collect()
+    }
+    fn deps_push(&mut self, dep: RingId) -> anyhow::Result<()> {
+        self.base.push(dep.into());
+        Ok(())
+    }
+    fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        self.ring_and(ring)?;
+        Ok(())
+    }
+    fn unring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        ring.operations.remove(&self.id);
+        Ok(())
+    }
 }
 
 impl Operation {
@@ -489,7 +542,7 @@ impl MioRing {
         }
     }
 
-    pub fn delete(&mut self, deleted: MioDeleted) {
+    pub fn delete(&mut self, deleted: MioArchived) {
         for id in deleted.mio_id {
             self.entities.remove(&id);
             self.specters.remove(&id);

@@ -130,6 +130,7 @@ impl Interpretable for MioInitiate {
                     .unwrap_or_else(|| mio.alloc.allocate())
                     .into();
                 
+                allocator.deps_push(RingId::from(operation))?;
                 allocator.ring(&mut mio.ring)?;
 
                 let ext = self
@@ -183,64 +184,60 @@ impl Interpretable for MioForce {
     }
 }
 
-pub enum MioDelete {
+pub enum MioArchive {
     Specter(MioId),
     Operation(OpId),
 }
 
-#[derive(Default)]
-pub struct MioDeleted {
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct MioArchived {
     pub mio_id: Vec<MioId>,
     pub op_id: Vec<OpId>,
 }
 
-impl AddAssign for MioDeleted {
+impl AddAssign for MioArchived {
     fn add_assign(&mut self, rhs: Self) {
         self.mio_id.extend(rhs.mio_id);
         self.op_id.extend(rhs.op_id);
     }
 }
-impl AddAssign<MioId> for MioDeleted {
+impl AddAssign<MioId> for MioArchived {
     fn add_assign(&mut self, rhs: MioId) {
         self.mio_id.push(rhs);
     }
 }
-impl AddAssign<OpId> for MioDeleted {
+impl AddAssign<OpId> for MioArchived {
     fn add_assign(&mut self, rhs: OpId) {
         self.op_id.push(rhs);
     }
 }
 
-impl Interpretable for MioDelete {
+impl Interpretable for MioArchive {
     type Mio<'a> = &'a mut Mio;
-    type Target<'a> = MioDeleted;
+    type Target<'a> = MioArchived;
     fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
-        let mut deleted = MioDeleted::default();
+        let mut archived = MioArchived::default();
         match self {
-            MioDelete::Specter(id) => {
-                deleted += id;
-                let specter = mio
-                    .ring
-                    .entities
-                    .remove(&id)
-                    .ok_or_else(|| anyhow::anyhow!("specter not found"))?;
+            MioArchive::Specter(id) => {
+                archived += id;
+                let specter = mio.specterish(&id);
+                specter.ring(&mut mio.archived)?;
+                specter.unring(&mut mio.ring)?;
                 mio.alloc.deallocate(id.into());
                 mio.chronology.retain(|e| e.base != id);
-                for dep in specter.deps {
-                    deleted += MioDelete::Operation(dep).interpret(mio)?;
+                for dep in specter.deps().into_iter().map(Into::into) {
+                    archived += MioArchive::Operation(dep).interpret(mio)?;
                 }
             }
-            MioDelete::Operation(id) => {
-                deleted += id;
-                let operation = mio
-                    .ring
-                    .operations
-                    .remove(&id)
-                    .ok_or_else(|| anyhow::anyhow!("operation not found"))?;
+            MioArchive::Operation(id) => {
+                archived += id;
+                let operation = mio.ring.operations[&id].clone();
+                operation.ring(&mut mio.archived)?;
+                operation.unring(&mut mio.ring)?;
                 mio.alloc.deallocate(id.into());
-                deleted += MioDelete::Specter(operation.specter).interpret(mio)?;
+                archived += MioArchive::Specter(operation.specter).interpret(mio)?;
             }
         }
-        Ok(deleted)
+        Ok(archived)
     }
 }
