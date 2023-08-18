@@ -23,13 +23,6 @@ fn Home(cx: Scope) -> Element {
     let view = use_state(cx, || MioView::all(&mio));
 
     fn format_time(t: SystemTime) -> String {
-        // use time::{format_description, OffsetDateTime, UtcOffset};
-        // let dt = OffsetDateTime::from(t).to_offset(UtcOffset::from_hms(8, 0, 0).unwrap());
-        // let format = format_description::parse(
-        //     "[year]-[month]-[day] [hour]:[minute]:[second]",
-        // )
-        // .unwrap();
-        // dt.format(&format).unwrap()
         let dt = chrono::DateTime::<chrono::Local>::from(t);
         dt.format("%Y-%m-%d %H:%M:%S").to_string()
     }

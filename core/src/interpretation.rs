@@ -35,7 +35,11 @@ impl Interpretable for MioViewGen {
                 (anchor + latter).clamp(0, mio.chronology.len() - 1),
             ),
         };
-        let timeline = mio.chronology[low..=high].iter().cloned().collect_vec();
+        let timeline = if high < mio.chronology.len() {
+            mio.chronology[low..=high].iter().cloned().collect_vec()
+        } else {
+            Vec::new()
+        };
         let ring = MioRingGen {
             base: timeline.iter().map(|e| e.base).collect::<HashSet<_>>(),
         }
@@ -96,27 +100,60 @@ pub struct MioInitiate {
     pub base: Vec<MioId>,
 }
 
+impl MioInitiate {
+    pub fn new(attr: impl Operable, base: Vec<MioId>) -> Self {
+        Self {
+            kind: attr.kind(),
+            attr: serde_json::to_value(attr).expect("failed to serialize attribute"),
+            base,
+        }
+    }
+}
+
 impl Interpretable for MioInitiate {
     type Mio<'a> = &'a mut Mio;
     type Target<'a> = MioRing;
     fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
-        let operation = {
-            let id = mio.alloc.allocate().into();
-            let specter = mio.alloc.allocate().into();
-            let operation = mio
-                .ring
-                .operations
-                .entry(id)
-                .and_modify(|e| unreachable!("duplicate entry found when initiating {:?}", e))
-                .or_insert(Operation {
-                    id,
+        let operation =
+            {
+                let mut allocator =
+                    mio.specterish(self.base.iter().next().ok_or_else(|| {
+                        anyhow::anyhow!("cannot initiate operation without base")
+                    })?);
+
+                let operation = allocator
+                    .allocate()
+                    .unwrap_or_else(|| mio.alloc.allocate())
+                    .into();
+                let specter = allocator
+                    .allocate()
+                    .unwrap_or_else(|| mio.alloc.allocate())
+                    .into();
+                
+                allocator.ring(&mut mio.ring)?;
+
+                let ext = self
+                    .kind
+                    .analyze(self.base.iter().map(|base| mio.specterish(base).kind()))
+                    .unwrap()
+                    .ext_hint();
+                Specter {
+                    id: specter,
+                    ext,
+                    deps: Vec::new(),
+                    body: Lazy { operation },
+                }
+                .ring(&mut mio.ring)?;
+                let operation = Operation {
+                    id: operation,
                     kind: self.kind,
                     attr: self.attr,
                     base: self.base,
                     specter,
-                });
-            operation.clone()
-        };
+                };
+                operation.ring_and(&mut mio.ring)?;
+                operation
+            };
         // return an incremental ring
         let mut ring = MioRing::new();
         for id in operation.base.iter().copied() {
@@ -127,6 +164,22 @@ impl Interpretable for MioInitiate {
             .insert(specter, mio.ring.specters[&specter].clone());
         ring.operations.insert(operation.id, operation);
         Ok(ring)
+    }
+}
+
+pub struct MioForce {
+    pub ids: HashSet<MioId>,
+}
+
+impl Interpretable for MioForce {
+    type Mio<'a> = &'a Mio;
+    type Target<'a> = ();
+
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
+        for id in self.ids {
+            mio.specterish(&id).run(mio)?;
+        }
+        Ok(())
     }
 }
 

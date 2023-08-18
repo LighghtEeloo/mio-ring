@@ -1,8 +1,11 @@
+mod identitier;
 mod interpretation;
 mod operation;
 mod persistence;
 
+pub use identitier::*;
 pub use interpretation::*;
+pub use operation::*;
 pub use persistence::*;
 
 use derive_more::{From, Into};
@@ -37,29 +40,6 @@ pub enum OperationKind {
     Summarize,
 }
 
-/// the underlying identifier for all mio ring items including entities, operations and specters
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct RingId {
-    /// the millisecond timestamp of the entity's creation
-    epoch: u64,
-    /// the unique ord of the entity
-    ord: usize,
-}
-
-/// the identifier for all entities and specters
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From, Into)]
-pub struct MioId(RingId);
-impl MioId {
-    pub fn stem(&self) -> String {
-        let MioId(RingId { epoch, ord }) = self;
-        format!("{}-{}", epoch, ord)
-    }
-}
-
-/// the identifier for all operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, From, Into)]
-pub struct OpId(RingId);
-
 /// the moment of significant creation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ephemerality {
@@ -90,6 +70,19 @@ impl Ord for Ephemerality {
 /// all specters have a kind
 pub trait HasEntityKind {
     fn kind(&self) -> EntityKind;
+    fn ext_hint(&self) -> EntityExt {
+        match self.kind() {
+            EntityKind::Text => EntityExt::Txt,
+            EntityKind::Image => EntityExt::Png,
+            EntityKind::Audio => EntityExt::Mp3,
+            EntityKind::Video => EntityExt::Mp4,
+        }
+    }
+}
+impl HasEntityKind for EntityKind {
+    fn kind(&self) -> EntityKind {
+        *self
+    }
 }
 
 /// all specters can be located, concrete or lazy alike
@@ -106,10 +99,6 @@ pub trait Locatable {
         std::fs::copy(alt, self.locate(dirs))?;
         Ok(())
     }
-    // fn write_str(&self, dirs: &MioDirs, content: &str) -> anyhow::Result<()> {
-    //     std::fs::write(self.locate(dirs), content)?;
-    //     Ok(())
-    // }
     fn remove(&mut self, dirs: &MioDirs) -> anyhow::Result<()> {
         std::fs::remove_file(self.locate(dirs))?;
         Ok(())
@@ -121,6 +110,11 @@ pub trait Ringable {
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()>;
 }
 
+/// all specters may allocate new `MioId`s
+pub trait Allocable {
+    fn allocate(&mut self) -> Option<RingId>;
+}
+
 /// all specters can be actualized, concrete or lazy alike;
 /// it's just for the lazy ones, we need to also actualize the operation
 pub trait Actualizable {
@@ -128,8 +122,8 @@ pub trait Actualizable {
 }
 
 /// and all specters should be specterish
-pub trait Specterish: HasEntityKind + Locatable + Ringable + Actualizable {}
-impl<T: HasEntityKind + Locatable + Ringable + Actualizable> Specterish for T {}
+pub trait Specterish: HasEntityKind + Locatable + Ringable + Allocable + Actualizable {}
+impl<T: HasEntityKind + Locatable + Ringable + Allocable + Actualizable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,6 +141,9 @@ impl<Body: Actualizer> HasEntityKind for Specter<Body> {
     fn kind(&self) -> EntityKind {
         self.ext.kind()
     }
+    fn ext_hint(&self) -> EntityExt {
+        self.ext
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -155,8 +152,8 @@ pub enum EntityExt {
     Url,
     Png,
     Jpg,
-    // Mp3,
-    // Mp4,
+    Mp3,
+    Mp4,
 }
 impl HasEntityKind for EntityExt {
     fn kind(&self) -> EntityKind {
@@ -165,8 +162,8 @@ impl HasEntityKind for EntityExt {
             EntityExt::Url => EntityKind::Text,
             EntityExt::Png => EntityKind::Image,
             EntityExt::Jpg => EntityKind::Image,
-            // EntityExt::Mp3 => EntityKind::Audio,
-            // EntityExt::Mp4 => EntityKind::Video,
+            EntityExt::Mp3 => EntityKind::Audio,
+            EntityExt::Mp4 => EntityKind::Video,
         }
     }
 }
@@ -177,8 +174,8 @@ impl Display for EntityExt {
             EntityExt::Url => write!(f, "url"),
             EntityExt::Png => write!(f, "png"),
             EntityExt::Jpg => write!(f, "jpg"),
-            // EntityExt::Mp3 => write!(f, "mp3"),
-            // EntityExt::Mp4 => write!(f, "mp4"),
+            EntityExt::Mp3 => write!(f, "mp3"),
+            EntityExt::Mp4 => write!(f, "mp4"),
         }
     }
 }
@@ -189,7 +186,7 @@ pub trait Actualizer {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Concrete {
     /// a pool of ord that can be assigned to the descendants of the entity
-    pub pool: HashSet<usize>,
+    pub pool: AllocPool,
     /// where the entity comes from, and how will it be treated
     pub providence: Providence,
 }
@@ -204,14 +201,28 @@ impl Locatable for Specter<Concrete> {
 }
 impl Ringable for Specter<Concrete> {
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
-        ring.entities.insert(self.id, self.clone());
+        self.ring_and(ring)?;
         Ok(())
+    }
+}
+impl Allocable for Specter<Concrete> {
+    fn allocate(&mut self) -> Option<RingId> {
+        self.body.pool.allocate()
     }
 }
 impl Actualizable for Specter<Concrete> {
     /// since concrete specters are always valid, we don't need to do anything
     fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
         Ok(())
+    }
+}
+impl Specter<Concrete> {
+    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+        Ok(ring
+            .entities
+            .entry(self.id)
+            .and_modify(|e| *e = self.clone())
+            .or_insert_with(|| self.clone()))
     }
 }
 
@@ -243,8 +254,13 @@ impl Locatable for Specter<Lazy> {
 }
 impl Ringable for Specter<Lazy> {
     fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
-        ring.specters.insert(self.id, self.clone());
+        self.ring_and(ring)?;
         Ok(())
+    }
+}
+impl Allocable for Specter<Lazy> {
+    fn allocate(&mut self) -> Option<RingId> {
+        None
     }
 }
 impl Actualizable for Specter<Lazy> {
@@ -258,6 +274,13 @@ impl Actualizable for Specter<Lazy> {
     }
 }
 impl Specter<Lazy> {
+    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+        Ok(ring
+            .specters
+            .entry(self.id)
+            .and_modify(|e| *e = self.clone())
+            .or_insert_with(|| self.clone()))
+    }
     /// elevate an actualized lazy specter to a concrete specter
     pub fn elevate(self, dirs: &MioDirs) -> anyhow::Result<Specter<Concrete>> {
         if self.exists(dirs) {
@@ -267,7 +290,7 @@ impl Specter<Lazy> {
                 ext: self.ext,
                 deps: self.deps,
                 body: Concrete {
-                    pool: HashSet::new(),
+                    pool: AllocPool::default(),
                     providence: Providence::Induced,
                 },
             };
@@ -296,13 +319,23 @@ pub struct Operation {
     pub specter: MioId,
 }
 
+impl Operation {
+    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+        Ok(ring
+            .operations
+            .entry(self.id)
+            .and_modify(|op| *op = self.clone())
+            .or_insert_with(|| self.clone()))
+    }
+}
+
 /// the persistable can be persisted into the file system
 pub trait Persistable {
     fn persist(&mut self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>>;
 }
 
 /// the operable can be done upon specters
-pub trait Operable: Sized + for<'de> Deserialize<'de> {
+pub trait Operable: Sized + Serialize + for<'de> Deserialize<'de> {
     type Source<'a>;
     type Target<'a>;
 
@@ -311,6 +344,7 @@ pub trait Operable: Sized + for<'de> Deserialize<'de> {
         let value = serde_json::from_value(op.attr.clone())?;
         Ok(value)
     }
+    fn kind(&self) -> OperationKind;
     /// apply the operator
     fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
 }
@@ -337,7 +371,7 @@ impl MioDirs {
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let data_dir = proj_dirs.data_dir().to_path_buf();
-        let index_path = data_dir.join("index.bin");
+        let index_path = data_dir.join("index.json");
         std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
         std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
         std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
@@ -362,48 +396,60 @@ pub struct Alloc {
     /// next ord to be allocated, larger than all existing ords
     pub ord: usize,
     /// the co-pool of ords that can be re-allocated, collected from the freed items
-    pub hill: HashSet<usize>,
+    pub hill: AllocPool,
 }
 
 impl Alloc {
     fn _allocate(&mut self) -> usize {
-        if let Some(ord) = self.hill.iter().next().cloned() {
-            self.hill.remove(&ord);
-            ord
-        } else {
-            let ord = self.ord;
-            self.ord += 1;
-            ord
-        }
+        let from_hill = self.hill.inner.iter().next().copied();
+        from_hill
+            .map(|ord| {
+                self.hill.inner.remove(&ord);
+                ord
+            })
+            .unwrap_or_else(|| {
+                let ord = self.ord;
+                self.ord += 1;
+                ord
+            })
     }
     pub fn allocate(&mut self) -> RingId {
-        let ord = self._allocate();
-        let epoch = SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-        RingId { ord, epoch }
+        RingId::now(self._allocate())
     }
-    pub fn allocate_pool(&mut self, size: usize) -> HashSet<usize> {
-        let mut pool = HashSet::with_capacity(size);
+    pub fn allocate_pool(&mut self, size: usize) -> AllocPool {
+        let mut inner = HashSet::with_capacity(size);
         for _ in 0..size {
-            pool.insert(self._allocate());
+            inner.insert(self._allocate());
         }
-        pool
+        AllocPool { inner }
     }
     pub fn deallocate(&mut self, id: RingId) {
-        self.hill.insert(id.ord);
+        self.hill.inner.insert(id.ord);
     }
     pub fn garbage_collection(&mut self) {
         while self.ord > 0 {
             let ord = self.ord - 1;
-            if self.hill.contains(&ord) {
-                self.hill.remove(&ord);
+            if self.hill.inner.contains(&ord) {
+                self.hill.inner.remove(&ord);
                 self.ord = ord;
             } else {
                 break;
             }
         }
+    }
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct AllocPool {
+    inner: HashSet<usize>,
+}
+
+impl AllocPool {
+    pub fn allocate(&mut self) -> Option<RingId> {
+        self.inner.iter().next().copied().map(|ord| {
+            self.inner.remove(&ord);
+            RingId::now(ord)
+        })
     }
 }
 
@@ -444,7 +490,7 @@ impl MioRing {
     }
 }
 
-const POOL_SIZE: usize = 8;
+const POOL_SIZE: usize = 2;
 
 /// the main data structure of the mio ring
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -477,7 +523,7 @@ impl Mio {
     pub fn read_or_bak_with_default() -> Self {
         let dirs = MioDirs::new();
         if let Ok(mio_content) = std::fs::read(&dirs.index_path) {
-            if let Ok(mio) = bincode::deserialize(&mio_content) {
+            if let Ok(mio) = serde_json::from_slice(&mio_content) {
                 // all success
                 return mio;
             } else {
@@ -485,7 +531,7 @@ impl Mio {
                 std::fs::rename(
                     &dirs.index_path,
                     &dirs.data_dir.join(format!(
-                        "index.{}.bin.bak",
+                        "index.json.{}.bak",
                         SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .expect("get system time failed")
@@ -500,7 +546,7 @@ impl Mio {
     }
 
     pub fn flush(&self) -> anyhow::Result<()> {
-        let mio_content = bincode::serialize(self)?;
+        let mio_content = serde_json::to_vec(self)?;
         let () = std::fs::write(&self.dirs.index_path, mio_content)?;
         Ok(())
     }

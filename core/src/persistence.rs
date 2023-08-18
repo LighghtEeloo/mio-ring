@@ -2,7 +2,8 @@ use super::*;
 
 impl Mio {
     /// run a persistable and memorize its entities into the mio ring
-    fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<()> {
+    fn register(&mut self, persister: &mut impl Persistable) -> anyhow::Result<Vec<MioId>> {
+        let mut ids = Vec::new();
         for (src, ext) in persister.persist()? {
             let id = self.alloc.allocate().into();
             let entity = Specter {
@@ -18,14 +19,12 @@ impl Mio {
                 time: SystemTime::now(),
                 base: id,
             });
-            self.ring
-                .entities
-                .entry(id)
-                .and_modify(|e| unreachable!("duplicate entry found when registering {:?}", e))
-                .or_insert(entity)
-                .replace(&self.dirs, src.path())?
+            entity
+                .ring_and(&mut self.ring)?
+                .replace(&self.dirs, src.path())?;
+            ids.push(id);
         }
-        Ok(())
+        Ok(ids)
     }
 }
 
@@ -47,7 +46,7 @@ mod screenshot_impl {
 
     impl Interpretable for ScreenShot {
         type Mio<'a> = &'a mut Mio;
-        type Target<'a> = ();
+        type Target<'a> = Vec<MioId>;
         fn interpret<'a>(mut self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
             mio.register(&mut self)
         }
@@ -88,7 +87,7 @@ mod clipboard_impl {
 
     impl Interpretable for Clipboard {
         type Mio<'a> = &'a mut Mio;
-        type Target<'a> = ();
+        type Target<'a> = Vec<MioId>;
         fn interpret<'a>(mut self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
             mio.register(&mut self)
         }
