@@ -5,22 +5,56 @@ pub struct MioView {
     pub ring: MioRing,
 }
 
-pub struct MioViewAnchor {
-    pub former: usize,
-    pub anchor: usize,
-    pub latter: usize,
+impl MioView {
+    pub fn all(mio: &Mio) -> Self {
+        MioViewGen::All.interpret(mio).unwrap()
+    }
 }
 
-impl Interpretable for MioViewAnchor {
+pub enum MioViewGen {
+    All,
+    Anchor {
+        former: usize,
+        anchor: usize,
+        latter: usize,
+    },
+}
+
+impl Interpretable for MioViewGen {
     type Mio<'a> = &'a Mio;
-    type Target = MioView;
-    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
-        let low = (self.anchor - self.former).clamp(0, mio.chronology.len() - 1);
-        let high = (self.anchor + self.latter).clamp(0, mio.chronology.len() - 1);
+    type Target<'a> = MioView;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
+        let (low, high) = match self {
+            MioViewGen::All => (0, mio.chronology.len() - 1),
+            MioViewGen::Anchor {
+                former,
+                anchor,
+                latter,
+            } => (
+                (anchor - former).clamp(0, mio.chronology.len() - 1),
+                (anchor + latter).clamp(0, mio.chronology.len() - 1),
+            ),
+        };
         let timeline = mio.chronology[low..=high].iter().cloned().collect_vec();
+        let ring = MioRingGen {
+            base: timeline.iter().map(|e| e.base).collect::<HashSet<_>>(),
+        }
+        .interpret(mio)?;
+        Ok(MioView { timeline, ring })
+    }
+}
+
+pub struct MioRingGen {
+    pub base: HashSet<MioId>,
+}
+
+impl Interpretable for MioRingGen {
+    type Mio<'a> = &'a Mio;
+    type Target<'a> = MioRing;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
         let mut ring = MioRing::new();
 
-        let mut required = timeline.iter().map(|e| e.base).collect::<HashSet<_>>();
+        let mut required = self.base;
         let mut done = HashSet::new();
 
         while required.difference(&done).count() > 0 {
@@ -52,7 +86,7 @@ impl Interpretable for MioViewAnchor {
                 required.insert(operation.specter);
             }
         }
-        Ok(MioView { timeline, ring })
+        Ok(ring)
     }
 }
 
@@ -62,42 +96,31 @@ pub struct MioInitiate {
     pub base: Vec<MioId>,
 }
 
-impl Mio {
-    /// initiate an operation
-    fn initiate(&mut self, kind: OperationKind) -> anyhow::Result<&mut Operation> {
-        let id = self.alloc.allocate().into();
-        let specter = self.alloc.allocate().into();
-        let operation = Operation {
-            id,
-            kind,
-            attr: serde_json::Value::Null,
-            base: Vec::new(),
-            specter,
-        };
-        Ok(self
-            .ring
-            .operations
-            .entry(id)
-            .and_modify(|e| unreachable!("duplicate entry found when initiating {:?}", e))
-            .or_insert(operation))
-    }
-}
-
 impl Interpretable for MioInitiate {
     type Mio<'a> = &'a mut Mio;
-    type Target = MioRing;
-    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
+    type Target<'a> = MioRing;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
         let operation = {
-            let operation = mio.initiate(self.kind)?;
-            operation.attr = self.attr;
-            operation.base = self.base;
+            let id = mio.alloc.allocate().into();
+            let specter = mio.alloc.allocate().into();
+            let operation = mio
+                .ring
+                .operations
+                .entry(id)
+                .and_modify(|e| unreachable!("duplicate entry found when initiating {:?}", e))
+                .or_insert(Operation {
+                    id,
+                    kind: self.kind,
+                    attr: self.attr,
+                    base: self.base,
+                    specter,
+                });
             operation.clone()
         };
         // return an incremental ring
         let mut ring = MioRing::new();
-        for entity in operation.base.iter().copied() {
-            ring.entities
-                .insert(entity, mio.ring.entities[&entity].clone());
+        for id in operation.base.iter().copied() {
+            mio.specterish(&id).ring(&mut ring)?;
         }
         let specter = operation.specter;
         ring.specters
@@ -137,8 +160,8 @@ impl AddAssign<OpId> for MioDeleted {
 
 impl Interpretable for MioDelete {
     type Mio<'a> = &'a mut Mio;
-    type Target = MioDeleted;
-    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target> {
+    type Target<'a> = MioDeleted;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
         let mut deleted = MioDeleted::default();
         match self {
             MioDelete::Specter(id) => {

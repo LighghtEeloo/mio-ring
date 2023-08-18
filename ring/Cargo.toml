@@ -12,4 +12,7 @@ dioxus-router = { version = "0.4" }
 log = "0.4"
 dioxus-logger = "0.4"
 
+# time = { version = "0.3", features = ["formatting", "local-offset"] }
+chrono = { version = "0.4" }
+
 mio-core = { path = "../core" }

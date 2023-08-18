@@ -2,7 +2,8 @@
 
 use dioxus::prelude::*;
 use dioxus_router::prelude::*;
-use mio_core::MioView;
+use mio_core::{Mio, MioView};
+use std::time::SystemTime;
 
 pub fn App(cx: Scope) -> Element {
     render! {
@@ -18,12 +19,30 @@ enum Route {
 
 #[inline_props]
 fn Home(cx: Scope) -> Element {
-    let _view = use_state(cx, || MioView {
-        timeline: vec![],
-        ring: Default::default(),
-    });
+    let mio = use_state(cx, || Mio::read_or_bak_with_default());
+    let view = use_state(cx, || MioView::all(&mio));
+
+    fn format_time(t: SystemTime) -> String {
+        // use time::{format_description, OffsetDateTime, UtcOffset};
+        // let dt = OffsetDateTime::from(t).to_offset(UtcOffset::from_hms(8, 0, 0).unwrap());
+        // let format = format_description::parse(
+        //     "[year]-[month]-[day] [hour]:[minute]:[second]",
+        // )
+        // .unwrap();
+        // dt.format(&format).unwrap()
+        let dt = chrono::DateTime::<chrono::Local>::from(t);
+        dt.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
     render! {
-        div {
+        for eph in view.timeline.iter() {
+            li {
+                "{format_time(eph.time)}"
+                img {
+                    src: "{view.ring.specterish(&eph.base).locate(&mio.dirs).display()}",
+                    height: "60px",
+                }
+            }
         }
     }
 }

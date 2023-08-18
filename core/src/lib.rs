@@ -116,6 +116,11 @@ pub trait Locatable {
     }
 }
 
+/// all specters can be added to the ring
+pub trait Ringable {
+    fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()>;
+}
+
 /// all specters can be actualized, concrete or lazy alike;
 /// it's just for the lazy ones, we need to also actualize the operation
 pub trait Actualizable {
@@ -123,8 +128,8 @@ pub trait Actualizable {
 }
 
 /// and all specters should be specterish
-pub trait Specterish: HasEntityKind + Locatable + Actualizable {}
-impl<T: HasEntityKind + Actualizable + Locatable> Specterish for T {}
+pub trait Specterish: HasEntityKind + Locatable + Ringable + Actualizable {}
+impl<T: HasEntityKind + Locatable + Ringable + Actualizable> Specterish for T {}
 
 /// the generalized form of the entity which may represent either a raw entity or an operated entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +202,12 @@ impl Locatable for Specter<Concrete> {
             .join(format!("{}.{}", self.id.stem(), self.ext))
     }
 }
+impl Ringable for Specter<Concrete> {
+    fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        ring.entities.insert(self.id, self.clone());
+        Ok(())
+    }
+}
 impl Actualizable for Specter<Concrete> {
     /// since concrete specters are always valid, we don't need to do anything
     fn run(&self, _mio: &Mio) -> anyhow::Result<()> {
@@ -228,6 +239,12 @@ impl Locatable for Specter<Lazy> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.cache_dir
             .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
+}
+impl Ringable for Specter<Lazy> {
+    fn ring(&self, ring: &mut MioRing) -> anyhow::Result<()> {
+        ring.specters.insert(self.id, self.clone());
+        Ok(())
     }
 }
 impl Actualizable for Specter<Lazy> {
@@ -300,8 +317,8 @@ pub trait Operable: Sized + for<'de> Deserialize<'de> {
 
 pub trait Interpretable {
     type Mio<'a>;
-    type Target;
-    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target>;
+    type Target<'a>;
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>>;
 }
 
 /// path manager for mio ring which synthesizes new paths
@@ -406,6 +423,16 @@ impl MioRing {
         Self::default()
     }
 
+    pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
+        if let Some(entity) = self.entities.get(id) {
+            Box::new(entity.clone())
+        } else if let Some(specter) = self.specters.get(id) {
+            Box::new(specter.clone())
+        } else {
+            unreachable!("specter not found")
+        }
+    }
+
     pub fn delete(&mut self, deleted: MioDeleted) {
         for id in deleted.mio_id {
             self.entities.remove(&id);
@@ -479,13 +506,7 @@ impl Mio {
     }
 
     pub fn specterish(&self, id: &MioId) -> Box<dyn Specterish> {
-        if let Some(entity) = self.ring.entities.get(id) {
-            Box::new(entity.clone())
-        } else if let Some(specter) = self.ring.specters.get(id) {
-            Box::new(specter.clone())
-        } else {
-            unreachable!("specter not found")
-        }
+        self.ring.specterish(id)
     }
 }
 

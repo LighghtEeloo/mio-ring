@@ -1,4 +1,4 @@
-use mio_core::{Mio, ScreenShot};
+use mio_core::{Interpretable, Mio, ScreenShot};
 // use tray_item::{IconSource, TrayItem};
 
 fn main() -> anyhow::Result<()> {
@@ -17,7 +17,8 @@ fn main() -> anyhow::Result<()> {
     //     inner.display();
     // }
     let mut mio = Mio::read_or_bak_with_default();
-    mio.register(&mut ScreenShot)?;
+    ScreenShot.interpret(&mut mio)?;
     mio.flush()?;
-    loop {}
+    eprintln!("{:#?}", mio);
+    Ok(())
 }
