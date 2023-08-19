@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 use dioxus_router::prelude::*;
-use mio_core::{Mio, MioView};
+use mio_core::*;
 use std::time::SystemTime;
 
 pub fn App(cx: Scope) -> Element {
@@ -31,11 +31,33 @@ fn Home(cx: Scope) -> Element {
         for eph in view.timeline.iter() {
             li {
                 "{format_time(eph.time)}"
-                img {
-                    src: "{view.ring.specterish(&eph.base).locate(&mio.dirs).display()}",
-                    height: "60px",
+                Specter {
+                    dirs: &mio.dirs,
+                    id: eph.base,
+                    ring: &view.ring,
                 }
             }
         }
+    }
+}
+
+#[inline_props]
+fn Specter<'a>(cx: Scope, dirs: &'a MioDirs, id: MioId, ring: &'a MioRing) -> Element {
+    let specter = ring.specterish(&id);
+    let kind = specter.kind();
+    let path = specter.locate(dirs);
+    match kind {
+        EntityKind::Text => {
+            let text = std::fs::read_to_string(&path).unwrap();
+            render!(pre {
+                "{text}"
+            })
+        }
+        EntityKind::Image => render!(img {
+            src: "{path.display()}",
+            height: "60px",
+        }),
+        EntityKind::Audio => todo!(),
+        EntityKind::Video => todo!(),
     }
 }
