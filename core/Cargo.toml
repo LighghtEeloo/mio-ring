@@ -3,6 +3,7 @@ name = "mio-core"
 version = "0.1.0"
 authors = ["LighghtEeloo <litiaeeloo@gmail.com>"]
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -20,6 +21,9 @@ arboard = { version = "3.2", optional = true }
 
 image = { version = "0.24", optional = true }
 leptess = { version = "0.14", optional = true }
+
+[build-dependencies]
+ring = "0.16"
 
 [features]
 default = ["screenshot", "clipboard", "image", "ocr"]
