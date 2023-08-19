@@ -28,13 +28,17 @@ fn Home(cx: Scope) -> Element {
     }
 
     render! {
-        for eph in view.timeline.iter() {
-            li {
-                "{format_time(eph.time)}"
-                Specter {
-                    dirs: &mio.dirs,
-                    id: eph.base,
-                    ring: &view.ring,
+        ul {
+            for eph in view.timeline.iter() {
+                li {
+                    "{format_time(eph.time)}"
+                    div {
+                        SpecterEntry {
+                            dirs: &mio.dirs,
+                            id: eph.base,
+                            ring: &view.ring,
+                        }
+                    }
                 }
             }
         }
@@ -42,22 +46,58 @@ fn Home(cx: Scope) -> Element {
 }
 
 #[inline_props]
-fn Specter<'a>(cx: Scope, dirs: &'a MioDirs, id: MioId, ring: &'a MioRing) -> Element {
+fn SpecterEntry<'a>(cx: Scope, dirs: &'a MioDirs, id: MioId, ring: &'a MioRing) -> Element {
     let specter = ring.specterish(&id);
-    let kind = specter.kind();
     let path = specter.locate(dirs);
+    let kind = specter.kind();
+    let ops = kind.synthesize();
+    let ops_group = rsx!(
+        OperationButtonGroup {
+            ops: ops
+        }
+    );
     match kind {
         EntityKind::Text => {
             let text = std::fs::read_to_string(&path).unwrap();
-            render!(pre {
-                "{text}"
+            render!(div {
+                style: "border: 1px black solid; padding: 5px;",
+                pre {
+                    "{text}"
+                }
+                ops_group
             })
         }
-        EntityKind::Image => render!(img {
-            src: "{path.display()}",
-            height: "60px",
+        EntityKind::Image => render!(div {
+            style: "border: 1px black solid; padding: 5px;",
+            img {
+                style: "max-height: 120px;",
+                src: "{path.display()}",
+            }
+            ops_group
         }),
         EntityKind::Audio => todo!(),
         EntityKind::Video => todo!(),
+    }
+}
+
+#[inline_props]
+fn OperationButtonGroup(cx: Scope, ops: Vec<OperationKind>) -> Element {
+    render! {
+        div {
+            for op in ops {
+                OperationButton {
+                    op: op
+                }
+            }
+        }
+    }
+}
+
+#[inline_props]
+fn OperationButton<'a>(cx: Scope, op: &'a OperationKind) -> Element {
+    render! {
+        button {
+            "{op:?}"
+        }
     }
 }
