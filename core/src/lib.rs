@@ -10,12 +10,13 @@ pub use operation::*;
 pub use persistence::*;
 
 use aes_gcm::{
-    aead::{Aead, OsRng, Nonce},
+    aead::{Aead, Nonce, OsRng},
     AeadCore, Aes256Gcm, Key, KeyInit,
 };
 use derive_more::{From, Into};
 use directories_next::ProjectDirs;
 use itertools::Itertools;
+use security::Cipher;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -101,11 +102,7 @@ pub trait Locatable {
     }
     fn read(&self, dirs: &MioDirs) -> anyhow::Result<Vec<u8>> {
         let ciphertext = fs::read(self.locate(dirs))?;
-        let key = security::main_key();
-        let cipher = Aes256Gcm::new(&key);
-        let plaintext = cipher
-            .decrypt(self.nonce(), ciphertext.as_ref())
-            .map_err(|_| anyhow::anyhow!("decryption failed"))?;
+        let plaintext = Cipher::decrypt(ciphertext.as_slice(), self.nonce())?;
         Ok(plaintext)
     }
     fn read_as_temp(&self, dirs: &MioDirs) -> anyhow::Result<NamedTempFile> {
@@ -117,11 +114,7 @@ pub trait Locatable {
         Ok(temp)
     }
     fn write(&mut self, dirs: &MioDirs, plaintext: &[u8]) -> anyhow::Result<()> {
-        let key = security::main_key();
-        let cipher = Aes256Gcm::new(&key);
-        let ciphertext = cipher
-            .encrypt(self.nonce(), plaintext.as_ref())
-            .map_err(|_| anyhow::anyhow!("encryption failed"))?;
+        let ciphertext = Cipher::encrypt(plaintext, self.nonce())?;
         fs::write(self.locate(dirs), ciphertext)?;
         Ok(())
     }
@@ -182,7 +175,7 @@ impl<Body: Actualizer> EntityLike for Specter<Body> {
         self.ext
     }
 }
-impl<Body:Actualizer> Specter<Body> {
+impl<Body: Actualizer> Specter<Body> {
     pub fn gen_nouce() -> Vec<u8> {
         Aes256Gcm::generate_nonce(&mut OsRng).as_slice().to_vec()
     }
@@ -241,8 +234,7 @@ impl Actualizer for Concrete {}
 
 impl Locatable for Specter<Concrete> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
-        dirs.data_dir
-            .join(format!("{}.{}", self.id.stem(), "data"))
+        dirs.data_dir.join(format!("{}.{}", self.id.stem(), "data"))
     }
     fn extension(&self) -> EntityExt {
         self.ext
@@ -478,7 +470,7 @@ impl MioDirs {
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let data_dir = proj_dirs.data_dir().to_path_buf();
-        let index_path = data_dir.join("index.json");
+        let index_path = data_dir.join("index.bin");
         fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
         fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
         fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
@@ -644,23 +636,25 @@ impl Mio {
     pub fn read_or_bak_with_default() -> Self {
         let dirs = MioDirs::new();
         if let Ok(mio_content) = fs::read(&dirs.index_path) {
-            if let Ok(mio) = serde_json::from_slice(&mio_content) {
-                // all success
-                return mio;
-            } else {
-                log::warn!("can't parse mio index, backup current file");
-                fs::rename(
-                    &dirs.index_path,
-                    &dirs.data_dir.join(format!(
-                        "index.json.{}.bak",
-                        SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .expect("get system time failed")
-                            .as_millis()
-                    )),
-                )
-                .expect("can't parse mio index, rename to bak file also failed");
+            if let Ok(mio_content) = Cipher::decrypt(mio_content.as_slice(), &Cipher::index_nonce())
+            {
+                if let Ok(mio) = serde_json::from_slice(&mio_content) {
+                    // all success
+                    return mio;
+                }
             }
+            log::warn!("can't parse mio index, backup current file");
+            fs::rename(
+                &dirs.index_path,
+                &dirs.data_dir.join(format!(
+                    "index.bin.{}.bak",
+                    SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .expect("get system time failed")
+                        .as_millis()
+                )),
+            )
+            .expect("can't parse mio index, rename to bak file also failed");
         }
         log::info!(
             "creating mio index file since it either doesn't exist or can't be correctly parsed"
@@ -670,6 +664,7 @@ impl Mio {
 
     pub fn flush(&self) -> anyhow::Result<()> {
         let mio_content = serde_json::to_vec(self)?;
+        let mio_content = Cipher::encrypt(mio_content.as_slice(), &Cipher::index_nonce())?;
         let () = fs::write(&self.dirs.index_path, mio_content)?;
         Ok(())
     }
