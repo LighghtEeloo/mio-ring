@@ -85,12 +85,12 @@ mod clipboard_impl {
         fn persist(&self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
             let mut board = self.board.borrow_mut();
             if let Ok(contents) = board.get_text() {
-                let mut file = tempfile::NamedTempFile::new()?;
+                let mut file = NamedTempFile::new()?;
                 file.write_all(contents.as_bytes())?;
                 Ok(vec![(file, EntityExt::Txt)])
             } else if let Ok(contents) = board.get_image() {
                 use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
-                let mut file = tempfile::NamedTempFile::new()?;
+                let mut file = NamedTempFile::new()?;
                 let buf = ImageBuffer::from_raw(
                     contents.width as u32,
                     contents.height as u32,

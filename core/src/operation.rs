@@ -61,10 +61,10 @@ impl Actualizable for Operation {
                 {
                     // ensure that the base is actualized
                     mio.specterish(&base).run(mio)?;
-                    image_impl::CropImage::prepare(self)?.execute(
-                        &mio.specterish(&base).locate(&mio.dirs).as_path(),
-                        &mio.specterish(&self.specter).locate(&mio.dirs).as_path(),
-                    )
+                    let res = image_impl::CropImage::prepare(self)?
+                        .execute(&mio.specterish(&base).read(&mio.dirs)?)?;
+                    mio.specterish(&self.specter)
+                        .write(&mio.dirs, res.as_bytes())
                 }
                 #[cfg(not(feature = "image"))]
                 {
@@ -81,10 +81,10 @@ impl Actualizable for Operation {
                         {
                             // ensure that the base is actualized
                             mio.specterish(&base).run(mio)?;
-                            ocr_impl::OcrText::prepare(self)?.execute(
-                                &mio.specterish(&base).locate(&mio.dirs).as_path(),
-                                &mio.specterish(&self.specter).locate(&mio.dirs).as_path(),
-                            )
+                            let res = ocr_impl::OcrText::prepare(self)?
+                                .execute(&mio.specterish(&base).read(&mio.dirs)?)?;
+                            mio.specterish(&self.specter)
+                                .write(&mio.dirs, res.as_bytes())
                         }
                         #[cfg(not(feature = "ocr"))]
                         {
@@ -107,6 +107,7 @@ mod image_impl {
 
     #[derive(Serialize, Deserialize)]
     pub struct CropImage {
+        pub ext: EntityExt,
         pub x: u32,
         pub y: u32,
         pub width: u32,
@@ -114,19 +115,23 @@ mod image_impl {
     }
 
     impl Operable for CropImage {
-        type Source<'a> = &'a Path;
-        type Target<'a> = &'a Path;
         fn kind(&self) -> OperationKind {
             OperationKind::Crop
         }
-        fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
-            let img = image::open(src)?;
+        fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>> {
+            let mut builder = tempfile::Builder::new();
+            let ext = format!(".{}", self.ext);
+            builder.suffix(&ext);
+            let mut file = builder.tempfile()?;
+            file.write_all(src)?;
+            let img = image::open(file.path())?;
             let img = img.crop_imm(self.x, self.y, self.width, self.height);
-            img.save(tar)?;
-            Ok(())
+            img.save(file.path())?;
+            Ok(std::fs::read(file.path())?)
         }
     }
 }
+use image::EncodableLayout;
 #[cfg(feature = "image")]
 pub use image_impl::*;
 
@@ -136,21 +141,24 @@ mod ocr_impl {
 
     #[derive(Serialize, Deserialize)]
     pub struct OcrText {
+        pub ext: EntityExt,
         pub lang: String,
     }
 
     impl Operable for OcrText {
-        type Source<'a> = &'a Path;
-        type Target<'a> = &'a Path;
         fn kind(&self) -> OperationKind {
             OperationKind::As(EntityKind::Text)
         }
-        fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()> {
+        fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>> {
+            let mut builder = tempfile::Builder::new();
+            let ext = format!(".{}", self.ext);
+            builder.suffix(&ext);
+            let mut file = builder.tempfile()?;
+            file.write_all(src)?;
             let mut lt = leptess::LepTess::new(None, self.lang.as_str()).unwrap();
-            lt.set_image(src).unwrap();
+            lt.set_image(file.path()).unwrap();
             let text = lt.get_utf8_text().unwrap();
-            std::fs::write(tar, text)?;
-            Ok(())
+            Ok(Vec::from(text.as_bytes()))
         }
     }
 }

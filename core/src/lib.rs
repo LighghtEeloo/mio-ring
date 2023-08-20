@@ -91,12 +91,16 @@ pub trait Locatable {
     fn exists(&self, dirs: &MioDirs) -> bool {
         self.locate(dirs).exists()
     }
+    fn read(&self, dirs: &MioDirs) -> anyhow::Result<Vec<u8>> {
+        let content = std::fs::read(self.locate(dirs))?;
+        Ok(content)
+    }
     fn write(&mut self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
         std::fs::write(self.locate(dirs), content)?;
         Ok(())
     }
-    fn replace(&mut self, dirs: &MioDirs, alt: &Path) -> anyhow::Result<()> {
-        std::fs::copy(alt, self.locate(dirs))?;
+    fn replace(&mut self, dirs: &MioDirs, src: &Path) -> anyhow::Result<()> {
+        std::fs::copy(src, self.locate(dirs))?;
         Ok(())
     }
     fn remove(&mut self, dirs: &MioDirs) -> anyhow::Result<()> {
@@ -389,9 +393,6 @@ pub trait Persistable {
 
 /// the operable can be done upon specters
 pub trait Operable: Sized + Serialize + for<'de> Deserialize<'de> {
-    type Source<'a>;
-    type Target<'a>;
-
     /// validate the kind and existence of source and return it if valid
     fn prepare(op: &Operation) -> anyhow::Result<Self> {
         let value = serde_json::from_value(op.attr.clone())?;
@@ -399,7 +400,7 @@ pub trait Operable: Sized + Serialize + for<'de> Deserialize<'de> {
     }
     fn kind(&self) -> OperationKind;
     /// apply the operator
-    fn execute<'a>(self, src: Self::Source<'a>, tar: Self::Target<'a>) -> anyhow::Result<()>;
+    fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>>;
 }
 
 pub trait Interpretable {
@@ -608,7 +609,9 @@ impl Mio {
                 .expect("can't parse mio index, rename to bak file also failed");
             }
         }
-        log::info!("creating mio index file since it either doesn't exist or can't be correctly parsed");
+        log::info!(
+            "creating mio index file since it either doesn't exist or can't be correctly parsed"
+        );
         Self::with_dirs(dirs)
     }
 

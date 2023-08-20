@@ -1,5 +1,6 @@
 use mio_core::{
-    Clipboard, CropImage, Interpretable, Mio, MioForce, MioInitiate, OcrText, ScreenShot, MioArchive,
+    Clipboard, CropImage, EntityExt, Interpretable, Mio, MioArchive, MioForce, MioInitiate,
+    OcrText, ScreenShot,
 };
 // use tray_item::{IconSource, TrayItem};
 
@@ -28,6 +29,7 @@ fn main() -> anyhow::Result<()> {
     // crop
     let diff = MioInitiate::new(
         CropImage {
+            ext: EntityExt::Png,
             x: 100,
             y: 0,
             width: 80,
@@ -42,6 +44,7 @@ fn main() -> anyhow::Result<()> {
     let ids = diff.specters.keys().copied().collect();
     let diff = MioInitiate::new(
         OcrText {
+            ext: EntityExt::Png,
             lang: "eng".to_string(),
         },
         ids,
