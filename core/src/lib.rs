@@ -198,6 +198,10 @@ impl Display for EntityExt {
     }
 }
 
+pub trait RingableAnd {
+    fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self>;
+}
+
 #[typetag::serde(tag = "actualizer")]
 pub trait Actualizer {}
 
@@ -251,8 +255,8 @@ impl Actualizable for Specter<Concrete> {
         Ok(())
     }
 }
-impl Specter<Concrete> {
-    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+impl RingableAnd for Specter<Concrete> {
+    fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
         Ok(ring
             .entities
             .entry(self.id)
@@ -325,14 +329,16 @@ impl Actualizable for Specter<Lazy> {
         }
     }
 }
-impl Specter<Lazy> {
-    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+impl RingableAnd for Specter<Lazy> {
+    fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
         Ok(ring
             .specters
             .entry(self.id)
             .and_modify(|e| *e = self.clone())
             .or_insert_with(|| self.clone()))
     }
+}
+impl Specter<Lazy> {
     /// elevate an actualized lazy specter to a concrete specter
     pub fn elevate(self, dirs: &MioDirs) -> anyhow::Result<Specter<Concrete>> {
         if self.exists(dirs) {
@@ -392,8 +398,8 @@ impl Ringable for Operation {
     }
 }
 
-impl Operation {
-    pub fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
+impl RingableAnd for Operation {
+    fn ring_and<'a>(&self, ring: &'a mut MioRing) -> anyhow::Result<&'a mut Self> {
         Ok(ring
             .operations
             .entry(self.id)

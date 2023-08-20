@@ -15,6 +15,8 @@ directories-next = "2.0"
 derive_more = "0.99"
 tempfile = "3"
 log = "0.4"
+aes-gcm = "0.10"
+include-crypt = "0.1"
 
 screenshots = { version = "0.7", optional = true }
 arboard = { version = "3.2", optional = true }
@@ -23,7 +25,7 @@ image = { version = "0.24", optional = true }
 leptess = { version = "0.14", optional = true }
 
 [build-dependencies]
-ring = "0.16"
+aes-gcm = "0.10"
 
 [features]
 default = ["screenshot", "clipboard", "image", "ocr"]
