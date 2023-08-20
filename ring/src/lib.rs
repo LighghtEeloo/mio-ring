@@ -10,21 +10,23 @@ use std::{
 
 pub struct TempAssets;
 impl TempAssets {
-    const TEMP_PATH: &'static str = "_tmp";
+    fn temp_dir() -> PathBuf {
+        std::env::temp_dir().join("mio")
+    }
     pub fn start() -> Self {
-        let path = PathBuf::from(Self::TEMP_PATH);
+        let path = Self::temp_dir();
         if !path.exists() {
             std::fs::create_dir(&path).unwrap();
         }
         Self
     }
     pub fn persistize(temporary: &Path) -> PathBuf {
-        let path = PathBuf::from(Self::TEMP_PATH).join(temporary.file_name().unwrap());
+        let path = Self::temp_dir().join(temporary.file_name().unwrap());
         std::fs::copy(temporary, path.as_path()).unwrap();
         path
     }
     pub fn safe_exit(self) {
-        let path = PathBuf::from(Self::TEMP_PATH);
+        let path = Self::temp_dir();
         std::fs::remove_dir_all(path).unwrap();
     }
 }
