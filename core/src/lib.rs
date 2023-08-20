@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
+    fs,
     io::Write,
     ops::AddAssign,
     path::{Path, PathBuf},
@@ -93,7 +94,7 @@ pub trait Locatable {
         self.locate(dirs).exists()
     }
     fn read(&self, dirs: &MioDirs) -> anyhow::Result<Vec<u8>> {
-        let content = std::fs::read(self.locate(dirs))?;
+        let content = fs::read(self.locate(dirs))?;
         Ok(content)
     }
     fn read_as_temp(&self, dirs: &MioDirs) -> anyhow::Result<NamedTempFile> {
@@ -105,15 +106,15 @@ pub trait Locatable {
         Ok(temp)
     }
     fn write(&mut self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
-        std::fs::write(self.locate(dirs), content)?;
+        fs::write(self.locate(dirs), content)?;
         Ok(())
     }
     fn replace(&mut self, dirs: &MioDirs, src: &Path) -> anyhow::Result<()> {
-        std::fs::copy(src, self.locate(dirs))?;
+        fs::copy(src, self.locate(dirs))?;
         Ok(())
     }
     fn remove(&mut self, dirs: &MioDirs) -> anyhow::Result<()> {
-        std::fs::remove_file(self.locate(dirs))?;
+        fs::remove_file(self.locate(dirs))?;
         Ok(())
     }
 }
@@ -346,8 +347,8 @@ impl Specter<Lazy> {
                 },
             };
             // move the file from cache to data
-            std::fs::copy(old_path.as_path(), specter.locate(dirs))?;
-            std::fs::remove_file(old_path.as_path())?;
+            fs::copy(old_path.as_path(), specter.locate(dirs))?;
+            fs::remove_file(old_path.as_path())?;
             Ok(specter)
         } else {
             anyhow::bail!("specter not actualized")
@@ -441,9 +442,9 @@ impl MioDirs {
         let cache_dir = proj_dirs.cache_dir().to_path_buf();
         let data_dir = proj_dirs.data_dir().to_path_buf();
         let index_path = data_dir.join("index.json");
-        std::fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
-        std::fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
-        std::fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
+        fs::create_dir_all(config_dir.as_path()).expect("failed to create config dir");
+        fs::create_dir_all(cache_dir.as_path()).expect("failed to create cache dir");
+        fs::create_dir_all(data_dir.as_path()).expect("failed to create data dir");
         Self {
             config_dir,
             cache_dir,
@@ -605,13 +606,13 @@ impl Mio {
 
     pub fn read_or_bak_with_default() -> Self {
         let dirs = MioDirs::new();
-        if let Ok(mio_content) = std::fs::read(&dirs.index_path) {
+        if let Ok(mio_content) = fs::read(&dirs.index_path) {
             if let Ok(mio) = serde_json::from_slice(&mio_content) {
                 // all success
                 return mio;
             } else {
                 log::warn!("can't parse mio index, backup current file");
-                std::fs::rename(
+                fs::rename(
                     &dirs.index_path,
                     &dirs.data_dir.join(format!(
                         "index.json.{}.bak",
@@ -632,7 +633,7 @@ impl Mio {
 
     pub fn flush(&self) -> anyhow::Result<()> {
         let mio_content = serde_json::to_vec(self)?;
-        let () = std::fs::write(&self.dirs.index_path, mio_content)?;
+        let () = fs::write(&self.dirs.index_path, mio_content)?;
         Ok(())
     }
 
