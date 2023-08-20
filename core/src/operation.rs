@@ -62,7 +62,7 @@ impl Actualizable for Operation {
                     // ensure that the base is actualized
                     mio.specterish(&base).run(mio)?;
                     let res = image_impl::CropImage::prepare(self)?
-                        .execute(&mio.specterish(&base).read(&mio.dirs)?)?;
+                        .execute(mio.specterish(&base).read_as_temp(&mio.dirs)?)?;
                     mio.specterish(&self.specter)
                         .write(&mio.dirs, res.as_bytes())
                 }
@@ -82,7 +82,7 @@ impl Actualizable for Operation {
                             // ensure that the base is actualized
                             mio.specterish(&base).run(mio)?;
                             let res = ocr_impl::OcrText::prepare(self)?
-                                .execute(&mio.specterish(&base).read(&mio.dirs)?)?;
+                                .execute(mio.specterish(&base).read_as_temp(&mio.dirs)?)?;
                             mio.specterish(&self.specter)
                                 .write(&mio.dirs, res.as_bytes())
                         }
@@ -118,16 +118,11 @@ mod image_impl {
         fn kind(&self) -> OperationKind {
             OperationKind::Crop
         }
-        fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>> {
-            let mut builder = tempfile::Builder::new();
-            let ext = format!(".{}", self.ext);
-            builder.suffix(&ext);
-            let mut file = builder.tempfile()?;
-            file.write_all(src)?;
-            let img = image::open(file.path())?;
+        fn execute<'a>(self, src: NamedTempFile) -> anyhow::Result<Vec<u8>> {
+            let img = image::open(src.path())?;
             let img = img.crop_imm(self.x, self.y, self.width, self.height);
-            img.save(file.path())?;
-            Ok(std::fs::read(file.path())?)
+            img.save(src.path())?;
+            Ok(std::fs::read(src.path())?)
         }
     }
 }
@@ -149,14 +144,9 @@ mod ocr_impl {
         fn kind(&self) -> OperationKind {
             OperationKind::As(EntityKind::Text)
         }
-        fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>> {
-            let mut builder = tempfile::Builder::new();
-            let ext = format!(".{}", self.ext);
-            builder.suffix(&ext);
-            let mut file = builder.tempfile()?;
-            file.write_all(src)?;
+        fn execute<'a>(self, src: NamedTempFile) -> anyhow::Result<Vec<u8>> {
             let mut lt = leptess::LepTess::new(None, self.lang.as_str()).unwrap();
-            lt.set_image(file.path()).unwrap();
+            lt.set_image(src.path()).unwrap();
             let text = lt.get_utf8_text().unwrap();
             Ok(Vec::from(text.as_bytes()))
         }

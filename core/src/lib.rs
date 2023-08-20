@@ -88,12 +88,21 @@ impl EntityLike for EntityKind {
 /// all specters can be located, concrete or lazy alike
 pub trait Locatable {
     fn locate(&self, dirs: &MioDirs) -> PathBuf;
+    fn extension(&self) -> EntityExt;
     fn exists(&self, dirs: &MioDirs) -> bool {
         self.locate(dirs).exists()
     }
     fn read(&self, dirs: &MioDirs) -> anyhow::Result<Vec<u8>> {
         let content = std::fs::read(self.locate(dirs))?;
         Ok(content)
+    }
+    fn read_as_temp(&self, dirs: &MioDirs) -> anyhow::Result<NamedTempFile> {
+        let mut builder = tempfile::Builder::new();
+        let ext = format!(".{}", self.extension());
+        builder.suffix(&ext);
+        let mut temp = builder.tempfile()?;
+        temp.write_all(&self.read(dirs)?)?;
+        Ok(temp)
     }
     fn write(&mut self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
         std::fs::write(self.locate(dirs), content)?;
@@ -206,6 +215,9 @@ impl Locatable for Specter<Concrete> {
         dirs.data_dir
             .join(format!("{}.{}", self.id.stem(), self.ext))
     }
+    fn extension(&self) -> EntityExt {
+        self.ext
+    }
 }
 impl Ringable for Specter<Concrete> {
     fn identifier(&self) -> RingId {
@@ -272,6 +284,9 @@ impl Locatable for Specter<Lazy> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.cache_dir
             .join(format!("{}.{}", self.id.stem(), self.ext))
+    }
+    fn extension(&self) -> EntityExt {
+        self.ext
     }
 }
 impl Ringable for Specter<Lazy> {
@@ -400,7 +415,7 @@ pub trait Operable: Sized + Serialize + for<'de> Deserialize<'de> {
     }
     fn kind(&self) -> OperationKind;
     /// apply the operator
-    fn execute<'a>(self, src: &'a [u8]) -> anyhow::Result<Vec<u8>>;
+    fn execute<'a>(self, src: NamedTempFile) -> anyhow::Result<Vec<u8>>;
 }
 
 pub trait Interpretable {
