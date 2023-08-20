@@ -1,25 +1,9 @@
 use mio_core::{
     Clipboard, CropImage, EntityExt, Interpretable, Mio, MioArchive, MioForce, MioInitiate,
-    OcrText, ScreenShot,
+    OcrText, ScreenShot, MioPurge,
 };
-// use tray_item::{IconSource, TrayItem};
 
 fn main() -> anyhow::Result<()> {
-    // #[cfg(not(target_os = "macos"))]
-    // {
-    //     let mut tray = TrayItem::new("mio-ring", IconSource::Resource("tray-icon-in-rc-file"))?;
-    //     tray.add_label("mio-ring")?;
-    // }
-    // #[cfg(target_os = "macos")]
-    // {
-    //     let mut tray = TrayItem::new("澪", IconSource::Resource(""))?;
-    //     // let mut tray = TrayItem::new("澪", IconSource::Resource("tray.icns"))?;
-    //     tray.add_label("mio-ring")?;
-    //     let inner = tray.inner_mut();
-    //     inner.add_quit_item("Quit");
-    //     inner.display();
-    // }
-
     // read
     let mut mio = Mio::read_or_bak_with_default();
 
@@ -55,13 +39,18 @@ fn main() -> anyhow::Result<()> {
 
     // clipboard
     let clipboard = Clipboard::new()?;
-    let _ids = clipboard.interpret(&mut mio)?;
+    // let _ids = clipboard.interpret(&mut mio)?;
+    let _ = clipboard;
 
     // archive
     for id in del_ids {
         let archived = MioArchive::Specter(id).interpret(&mut mio)?;
-        eprintln!("{:#?}", archived);
+        let _ = archived;
+        // eprintln!("{:#?}", archived);
     }
+
+    // purge
+    MioPurge.interpret(&mut mio)?;
 
     // save
     mio.flush()?;

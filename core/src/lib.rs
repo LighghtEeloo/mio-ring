@@ -588,6 +588,10 @@ impl MioRing {
         }
     }
 
+    pub fn mio_ids(&self) -> impl Iterator<Item = &MioId> {
+        self.entities.keys().chain(self.specters.keys())
+    }
+
     pub fn delete(&mut self, deleted: MioArchived) {
         for id in deleted.mio_id {
             self.entities.remove(&id);
@@ -596,6 +600,12 @@ impl MioRing {
         for id in deleted.op_id {
             self.operations.remove(&id);
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.entities.clear();
+        self.operations.clear();
+        self.specters.clear();
     }
 }
 

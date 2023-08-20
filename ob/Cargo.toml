@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["LighghtEeloo <litiaeeloo@gmail.com>"]
 edition = "2021"
 
+[[bin]]
+name = "mio-ob"
+path = "src/bin/ob.rs"
+
+[[bin]]
+name = "mio-tray"
+path = "src/bin/tray.rs"
+
 [dependencies]
 anyhow = "1.0"
 serde_json = "1"

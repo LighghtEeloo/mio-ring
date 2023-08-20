@@ -129,7 +129,7 @@ impl Interpretable for MioInitiate {
                     .allocate()
                     .unwrap_or_else(|| mio.alloc.allocate())
                     .into();
-                
+
                 allocator.deps_push(RingId::from(operation))?;
                 allocator.ring(&mut mio.ring)?;
 
@@ -240,5 +240,21 @@ impl Interpretable for MioArchive {
             }
         }
         Ok(archived)
+    }
+}
+
+pub struct MioPurge;
+
+impl Interpretable for MioPurge {
+    type Mio<'a> = &'a mut Mio;
+    type Target<'a> = ();
+
+    fn interpret<'a>(self, mio: Self::Mio<'a>) -> anyhow::Result<Self::Target<'a>> {
+        for id in mio.archived.mio_ids() {
+            let mut specter = mio.archived.specterish(id);
+            specter.remove(&mio.dirs)?;
+        }
+        mio.archived.clear();
+        Ok(())
     }
 }
