@@ -3,7 +3,31 @@
 use dioxus::prelude::*;
 use dioxus_router::prelude::*;
 use mio_core::*;
-use std::time::SystemTime;
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
+
+pub struct TempAssets;
+impl TempAssets {
+    const TEMP_PATH: &'static str = "_tmp";
+    pub fn start() -> Self {
+        let path = PathBuf::from(Self::TEMP_PATH);
+        if !path.exists() {
+            std::fs::create_dir(&path).unwrap();
+        }
+        Self
+    }
+    pub fn persistize(temporary: &Path) -> PathBuf {
+        let path = PathBuf::from(Self::TEMP_PATH).join(temporary.file_name().unwrap());
+        std::fs::copy(temporary, path.as_path()).unwrap();
+        path
+    }
+    pub fn safe_exit(self) {
+        let path = PathBuf::from(Self::TEMP_PATH);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+}
 
 pub fn App(cx: Scope) -> Element {
     render! {
@@ -49,14 +73,10 @@ fn Home(cx: Scope) -> Element {
 fn SpecterEntry<'a>(cx: Scope, dirs: &'a MioDirs, id: MioId, ring: &'a MioRing) -> Element {
     let specter = ring.specterish(&id);
     let specter_file = specter.read_as_temp(dirs).unwrap();
-    let path = specter_file.path();
+    let path = TempAssets::persistize(specter_file.path());
     let kind = specter.kind();
     let ops = kind.synthesize();
-    let ops_group = rsx!(
-        OperationButtonGroup {
-            ops: ops
-        }
-    );
+    let ops_group = rsx!(OperationButtonGroup { ops: ops });
     match kind {
         EntityKind::Text => {
             let text = std::fs::read_to_string(&path).unwrap();

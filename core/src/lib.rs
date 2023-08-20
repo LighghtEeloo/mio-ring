@@ -242,7 +242,7 @@ impl Actualizer for Concrete {}
 impl Locatable for Specter<Concrete> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.data_dir
-            .join(format!("{}.{}", self.id.stem(), self.ext))
+            .join(format!("{}.{}", self.id.stem(), "data"))
     }
     fn extension(&self) -> EntityExt {
         self.ext
@@ -315,7 +315,7 @@ impl Actualizer for Lazy {}
 impl Locatable for Specter<Lazy> {
     fn locate(&self, dirs: &MioDirs) -> PathBuf {
         dirs.cache_dir
-            .join(format!("{}.{}", self.id.stem(), self.ext))
+            .join(format!("{}.{}", self.id.stem(), "data"))
     }
     fn extension(&self) -> EntityExt {
         self.ext
