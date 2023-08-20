@@ -48,7 +48,8 @@ fn Home(cx: Scope) -> Element {
 #[inline_props]
 fn SpecterEntry<'a>(cx: Scope, dirs: &'a MioDirs, id: MioId, ring: &'a MioRing) -> Element {
     let specter = ring.specterish(&id);
-    let path = specter.locate(dirs);
+    let specter_file = specter.read_as_temp(dirs).unwrap();
+    let path = specter_file.path();
     let kind = specter.kind();
     let ops = kind.synthesize();
     let ops_group = rsx!(

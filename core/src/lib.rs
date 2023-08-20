@@ -2,12 +2,17 @@ mod identitier;
 mod interpretation;
 mod operation;
 mod persistence;
+mod security;
 
 pub use identitier::*;
 pub use interpretation::*;
 pub use operation::*;
 pub use persistence::*;
 
+use aes_gcm::{
+    aead::{Aead, OsRng, Nonce},
+    AeadCore, Aes256Gcm, Key, KeyInit,
+};
 use derive_more::{From, Into};
 use directories_next::ProjectDirs;
 use itertools::Itertools;
@@ -90,12 +95,18 @@ impl EntityLike for EntityKind {
 pub trait Locatable {
     fn locate(&self, dirs: &MioDirs) -> PathBuf;
     fn extension(&self) -> EntityExt;
+    fn nonce(&self) -> &Nonce<Aes256Gcm>;
     fn exists(&self, dirs: &MioDirs) -> bool {
         self.locate(dirs).exists()
     }
     fn read(&self, dirs: &MioDirs) -> anyhow::Result<Vec<u8>> {
-        let content = fs::read(self.locate(dirs))?;
-        Ok(content)
+        let ciphertext = fs::read(self.locate(dirs))?;
+        let key = security::main_key();
+        let cipher = Aes256Gcm::new(&key);
+        let plaintext = cipher
+            .decrypt(self.nonce(), ciphertext.as_ref())
+            .map_err(|_| anyhow::anyhow!("decryption failed"))?;
+        Ok(plaintext)
     }
     fn read_as_temp(&self, dirs: &MioDirs) -> anyhow::Result<NamedTempFile> {
         let mut builder = tempfile::Builder::new();
@@ -105,12 +116,18 @@ pub trait Locatable {
         temp.write_all(&self.read(dirs)?)?;
         Ok(temp)
     }
-    fn write(&mut self, dirs: &MioDirs, content: &[u8]) -> anyhow::Result<()> {
-        fs::write(self.locate(dirs), content)?;
+    fn write(&mut self, dirs: &MioDirs, plaintext: &[u8]) -> anyhow::Result<()> {
+        let key = security::main_key();
+        let cipher = Aes256Gcm::new(&key);
+        let ciphertext = cipher
+            .encrypt(self.nonce(), plaintext.as_ref())
+            .map_err(|_| anyhow::anyhow!("encryption failed"))?;
+        fs::write(self.locate(dirs), ciphertext)?;
         Ok(())
     }
     fn replace(&mut self, dirs: &MioDirs, src: &Path) -> anyhow::Result<()> {
-        fs::copy(src, self.locate(dirs))?;
+        let plaintext = fs::read(src)?;
+        self.write(dirs, &plaintext)?;
         Ok(())
     }
     fn remove(&mut self, dirs: &MioDirs) -> anyhow::Result<()> {
@@ -150,6 +167,8 @@ pub struct Specter<Body: Actualizer> {
     pub id: MioId,
     /// the file extension, or "type", of the resulting entity
     pub ext: EntityExt,
+    // /// nonce per specter
+    pub nonce: Vec<u8>,
     /// operations that directly depend on this specter
     pub deps: Vec<OpId>,
     /// the actualizer of the specter
@@ -161,6 +180,11 @@ impl<Body: Actualizer> EntityLike for Specter<Body> {
     }
     fn ext_hint(&self) -> EntityExt {
         self.ext
+    }
+}
+impl<Body:Actualizer> Specter<Body> {
+    pub fn gen_nouce() -> Vec<u8> {
+        Aes256Gcm::generate_nonce(&mut OsRng).as_slice().to_vec()
     }
 }
 
@@ -222,6 +246,9 @@ impl Locatable for Specter<Concrete> {
     }
     fn extension(&self) -> EntityExt {
         self.ext
+    }
+    fn nonce(&self) -> &Nonce<Aes256Gcm> {
+        Nonce::<Aes256Gcm>::from_slice(&self.nonce.as_slice())
     }
 }
 impl Ringable for Specter<Concrete> {
@@ -293,6 +320,9 @@ impl Locatable for Specter<Lazy> {
     fn extension(&self) -> EntityExt {
         self.ext
     }
+    fn nonce(&self) -> &Nonce<Aes256Gcm> {
+        Nonce::<Aes256Gcm>::from_slice(&self.nonce.as_slice())
+    }
 }
 impl Ringable for Specter<Lazy> {
     fn identifier(&self) -> RingId {
@@ -346,6 +376,7 @@ impl Specter<Lazy> {
             let specter = Specter {
                 id: self.id,
                 ext: self.ext,
+                nonce: self.nonce,
                 deps: self.deps,
                 body: Concrete {
                     pool: AllocPool::default(),

@@ -9,6 +9,7 @@ impl Mio {
             let entity = Specter {
                 id,
                 ext,
+                nonce: Specter::<Concrete>::gen_nouce(),
                 deps: Vec::new(),
                 body: Concrete {
                     pool: self.alloc.allocate_pool(POOL_SIZE),

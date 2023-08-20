@@ -141,6 +141,7 @@ impl Interpretable for MioInitiate {
                 Specter {
                     id: specter,
                     ext,
+                    nonce: Specter::<Lazy>::gen_nouce(),
                     deps: Vec::new(),
                     body: Lazy { operation },
                 }
