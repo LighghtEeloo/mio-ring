@@ -12,6 +12,10 @@ path = "src/bin/ob.rs"
 name = "mio-tray"
 path = "src/bin/tray.rs"
 
+[[bin]]
+name = "miod"
+path = "src/bin/daemon.rs"
+
 [dependencies]
 anyhow = "1.0"
 serde_json = "1"
