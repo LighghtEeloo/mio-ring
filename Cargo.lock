@@ -2436,6 +2436,7 @@ dependencies = [
 name = "mio-ring"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "dioxus",
  "dioxus-desktop",

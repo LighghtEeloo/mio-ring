@@ -5,14 +5,14 @@ authors = ["LighghtEeloo <litiaeeloo@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+log = "0.4"
+# time = { version = "0.3", features = ["formatting", "local-offset"] }
+chrono = { version = "0.4" }
+anyhow = "1"
+
 dioxus = { version = "0.4" }
 dioxus-desktop = { version = "0.4", features = ["fullscreen", "tray"] }
 dioxus-router = { version = "0.4" }
-
-log = "0.4"
 dioxus-logger = "0.4"
-
-# time = { version = "0.3", features = ["formatting", "local-offset"] }
-chrono = { version = "0.4" }
 
 mio-core = { path = "../core" }

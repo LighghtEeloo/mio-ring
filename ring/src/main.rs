@@ -1,7 +1,7 @@
 use dioxus_desktop::{Config, WindowBuilder};
 use mio_ring::{App, TempAssets};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let assets = TempAssets::start();
 
     dioxus_logger::init(log::LevelFilter::Info).expect("failed to init logger");
@@ -14,4 +14,5 @@ fn main() {
     );
 
     assets.safe_exit();
+    Ok(())
 }
