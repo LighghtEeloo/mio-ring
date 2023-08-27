@@ -18,7 +18,7 @@ log = "0.4"
 aes-gcm = "0.10"
 include-crypt = "0.1"
 
-screenshots = { version = "0.7", optional = true }
+screenshots = { version = "0.8", optional = true }
 arboard = { version = "3.2", optional = true }
 
 image = { version = "0.24", optional = true }

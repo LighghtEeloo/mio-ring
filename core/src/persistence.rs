@@ -39,9 +39,9 @@ mod screenshot_impl {
         fn persist(&self) -> anyhow::Result<Vec<(NamedTempFile, EntityExt)>> {
             let mut v = Vec::new();
             for screen in screenshots::Screen::all()?.into_iter() {
-                let image = screen.capture()?.to_png(None)?;
+                let image = screen.capture()?;
                 let mut file = NamedTempFile::new()?;
-                file.write_all(image.as_slice())?;
+                image.write_to(&mut file, image::ImageOutputFormat::Png)?;
                 v.push((file, EntityExt::Png));
             }
             Ok(v)
